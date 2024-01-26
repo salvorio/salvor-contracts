@@ -20,6 +20,9 @@ This repository contains all contracts for Salvor.
 * DutchAuctionMarketplace
 * PaymentManager
 * NFTCollectible (template contract)
+* SalvorLending
+* SalvorExchange
+* AssetManager
 
 ![](https://cdn.salvor.io/site/images/scheme_3.png)
 
