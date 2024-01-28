@@ -1,3 +1,5 @@
+Detailed information about SalvorLending and SalvorExchange will be provided at a later stage.
+
 # VeArt.sol Information
 
 For technical and functional requirements and more detailed information about the VeArt contract, please refer to the documentation for the VeArt, which can be accessed via the link provided below.

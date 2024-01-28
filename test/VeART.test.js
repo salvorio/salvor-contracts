@@ -41,14 +41,11 @@ describe("Art Staking", function () {
 		const receivers = [this.salvorGovernanceToken.address, this.owner.address, this.signers[2].address, this.veART.address]
 		await this.salvorGovernanceToken.initialMint(receivers, [totalToken, totalToken, totalToken, totalToken])
 
-
-
 		this.erc721Collectible = await this.erc721CollectibleCF.deploy("S", "s")
 		await this.erc721Collectible.deployed()
 
-		this.erc721SalvorMini = await this.erc721SalvorMiniCF.deploy("SalvorMini", "sm")
+		this.erc721SalvorMini = await this.erc721SalvorMiniCF.deploy(this.owner.address)
 
-		await this.veART.setSalvorMini(this.erc721SalvorMini.address)
 	})
 
 	it("deploy", async function() {
@@ -67,34 +64,6 @@ describe("Art Staking", function () {
 		await expect(this.veART.connect(this.signers[1]).unpause()).to.be.revertedWith("Ownable: caller is not the owner")
 	})
 
-	it("add whitelisted platform", async function() {
-		await expect(this.veART.connect(this.signers[1]).addPlatform(this.erc721SalvorMini.address)).to.be.revertedWith("Ownable: caller is not the owner")
-
-		await expect(this.veART.addPlatform(this.erc721SalvorMini.address)).to.emit(this.veART, "WhitelistAdded")
-
-		await expect(this.veART.addPlatform(this.erc721SalvorMini.address)).to.be.revertedWith("Error: already whitelisted")
-	})
-
-	it("remove whitelisted platform", async function() {
-		await expect(this.veART.connect(this.signers[1]).removePlatform(this.erc721SalvorMini.address)).to.be.revertedWith("Ownable: caller is not the owner")
-
-		await expect(this.veART.removePlatform(this.erc721SalvorMini.address)).to.be.revertedWith("Error: not whitelisted")
-
-		await this.veART.addPlatform(this.erc721SalvorMini.address)
-		await expect(this.veART.removePlatform(this.erc721SalvorMini.address)).to.emit(this.veART, "WhitelistRemoved")
-	})
-
-	it("set salvor mini address", async function() {
-		await expect(this.veART.connect(this.signers[1]).setSalvorMini(this.erc721SalvorMini.address)).to.be.revertedWith("Ownable: caller is not the owner")
-
-		await expect(this.veART.setSalvorMini(this.erc721SalvorMini.address)).to.emit(this.veART, "SalvorMiniSet")
-	})
-
-	it("set rarity level multiplier", async function() {
-		await expect(this.veART.connect(this.signers[1]).setRarityLevelMultiplier(10)).to.be.revertedWith("Ownable: caller is not the owner")
-
-		await expect(this.veART.setRarityLevelMultiplier(10)).to.emit(this.veART, "RarityLevelMultiplierUpdated")
-	})
 
 	it("set max cap", async function() {
 		await expect(this.veART.connect(this.signers[1]).setMaxCap(10)).to.be.revertedWith("Ownable: caller is not the owner")
@@ -118,10 +87,6 @@ describe("Art Staking", function () {
 
 	it("Get Boosted Generation Rate", async function() {
 		expect(await this.veART.getBoostedGenerationRate(this.signers[1].address)).to.be.equal(await this.veART.veARTgenerationRate())
-	})
-
-	it("Get Boosted Increase Percentage", async function() {
-		expect(Number((await this.veART.getBoostedIncreasePercentage(this.signers[1].address)).toString())).to.be.equal(0)
 	})
 
 	it("name", async function() {
@@ -232,41 +197,6 @@ describe("Art Staking", function () {
 		await network.provider.send("evm_mine")
 
 		await this.veART.withdrawAllART()
-	})
-
-	it("burn Salvor Mini to Boost veART", async function() {
-		await this.erc721Collectible.setVeART(this.veART.address);
-		await this.erc721SalvorMini.mint("1", 1);
-		await this.erc721SalvorMini.setApprovalForAll(this.veART.address, true);
-
-		await this.veART.pause()
-		await expect(
-			this.veART.burnSalvorMiniToBoostVeART("1")
-		).to.be.revertedWith("Pausable: paused")
-		await this.veART.unpause()
-
-		// ensures that the call is not made from a smart contract, unless it is on the whitelist.
-		await expect(this.erc721Collectible.burnSalvorMiniToBoostVeART("1")).to.be.revertedWith('Error: Unauthorized smart contract access')
-
-		await this.veART.addPlatform(this.erc721Collectible.address);
-
-		await expect(
-			this.erc721Collectible.burnSalvorMiniToBoostVeART( "1")
-		).to.be.revertedWith("The provided NFT does not belong to the sender")
-
-		await this.salvorGovernanceToken.approve(this.veART.address, '100000000000000000000000')
-		await this.veART.depositART('100000000000000000000000')
-
-		await network.provider.send("evm_increaseTime", [24*60*60])
-		await network.provider.send("evm_mine")
-
-		await expect(
-			this.veART.connect(this.signers[2]).burnSalvorMiniToBoostVeART( "1")
-		).to.be.revertedWith("The provided NFT does not belong to the sender")
-
-		await expect(
-			this.veART.burnSalvorMiniToBoostVeART("1")
-		).to.emit(this.veART, 'BurnSalvorMini')
 	})
 
 	it("harvest veART", async function() {

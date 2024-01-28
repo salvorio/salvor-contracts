@@ -27,7 +27,6 @@ describe("SalvorGovernanceToken", function () {
 				},
 			],
 		})
-
 		// Contracts
 		this.salvorGovernanceToken = await this.salvorGovernanceTokenCF.deploy("Test Rock", "TROCK")
 	})
