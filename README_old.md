@@ -1,8 +1,12 @@
-# VeArt.sol Information
+# VeArt.sol Audit Information
 
-For technical and functional requirements and more detailed information about the VeArt contract, please refer to the documentation for the VeArt, which can be accessed via the link provided below.
+For tecnical and functional requirements and more detailed information about the VeArt contract, please refer to the documentation for the VeArt, which can be accessed via the link provided below.
 
-[**VeART Documantaion**](https://docs.google.com/document/d/1wNrZ8olOkYNMOCRqIa-LwWDA3EgKFnE_ryGoomo0Xlw)
+[**VeART Documantaion**](https://docs.google.com/document/d/1wNrZ8olOkYNMOCRqIa-LwWDA3EgKFnE_ryGoomo0Xlw/edit)
+
+
+The Hacken Team has previously audited the other contracts included in this repository. 
+ 
 
 # Salvor
 
@@ -10,12 +14,17 @@ This repository contains all contracts for Salvor.
 
 * SalvorGovernanceToken
 * VeART
-* NFTCollectible (template ERC721 contract)
+* ArtMarketplace
+* Marketplace
+* AuctionMarketplace
+* DutchAuctionMarketplace
+* PaymentManager
+* NFTCollectible (template contract)
 * SalvorLending
 * SalvorExchange
 * AssetManager
 
-![](https://cdn.salvor.io/site/images/l_schema.png)
+![](https://cdn.salvor.io/site/images/scheme_3.png)
 
 ## Requirements
 
@@ -41,9 +50,9 @@ npm install
 npx hardhat compile
 ```
 
-In order to properly organize the contracts, the **AssetManager** contract must be deployed first.
-Once deployed, the obtained **AssetManager** address needs to be set in the exchange and lending contracts using their respective `setAssetManager` function.
-Additionally, the deployed **SalvorExchange** and **SalvorLending** contracts' addresses must be whitelisted on the AssetManager contract using the `addPlatform` function.
+In order to organize contracts together the **PaymentManager** must deployed first and received payment contract address must be passed to the other marketplace contracts on deployment as a parameter.
+And every marketplace platform must be whitelisted via `addPlatform` on `paymentManager`.
+In order to deploy the **ArtMarketplace** contract, the **GovarnanceToken** contract must be deployed first and the address of the **GovarnanceToken** contract must be passed as a parameter to the **ArtMarketplace** contract.
 
 ``deploy.js`` configured to handle above explanation.
 
@@ -65,10 +74,12 @@ npx hardhat run --network fuji deploySalvorMini.js
 
 
 ```
-npx hardhat verify --network fuji ASSET_MANAGER_CONTRACT_ADDRESS
+npx hardhat verify --network fuji PAYMENT_MANAGER_CONTRACT_ADDRESS
 npx hardhat verify --network fuji GOVARNANCE_TOKEN_CONTRACT_ADDRESS
-npx hardhat verify --network fuji EXCHANGE_CONTRACT_ADDRESS
-npx hardhat verify --network fuji LENDING_CONTRACT_ADDRESS
+npx hardhat verify --network fuji MARKETPLACE_CONTRACT_ADDRESS
+npx hardhat verify --network fuji AUCTION_MARKETPLACE_CONTRACT_ADDRESS
+npx hardhat verify --network fuji DUTCH_AUCTION_MARKETPLACE_CONTRACT_ADDRESS
+npx hardhat verify --network fuji ART_MARKETPLACE_CONTRACT_ADDRESS
 npx hardhat verify --network fuji VEART_CONTRACT_ADDRESS
 ```
 
@@ -95,6 +106,11 @@ npx hardhat coverage
 
 | File                        | Statements | Branches |
 |-----------------------------|------------|----------|
+| ArtMarketplace.sol          | 100%       | 85.33%   |
+| AuctionMarketplace.sol      | 97.8%      | 96.08%   |
+| DutchAuctionMarketplace.sol | 100%       | 96.15%   |
+| Marketplace.sol             | 100%       | 91.51%   |
+| PaymentManager.sol          | 100%       | 93.94%   |
 | NFTCollectible.sol          | 100%       | 100%     |
 | SalvorGovernanceToken.sol          | 100%       | 100%     |
 | VeArt.sol          | 98.17%       | 80.33%     |
@@ -104,13 +120,18 @@ npx hardhat coverage
 
 ### The contracts below are example contracts that have been deployed on the Fuji network. They should be used as references for understanding the functionality of the contracts on the Fuji network. However, it is important to note that they are not meant to be used in production and may not have the same level of security and reliability as the contracts deployed on a live network.
 
+[ArtMarketplace](https://testnet.snowtrace.io/address/0x867cb9f79b3a1a283dcf728e68188bd73c0ec00a)
+
 [VeArt](https://testnet.snowtrace.io/address/0xc6CD5ed983729DEa05F2d2bD7E99DC6422bb2912)
 
-[AssetManager](https://testnet.snowtrace.io/address/0xd54a09cc48098acf67a82c68fb637f892f886591)
+[Marketplace](https://testnet.snowtrace.io/address/0xf31d0abb570d33ad2118969442eba7f5c698098a)
 
-[Exchange](https://testnet.snowtrace.io/address/0xc2ab35b30127cfac1ea55228ddabfdc6040a3cec)
+[AuctionMarketplace](https://testnet.snowtrace.io/address/0xa76993588c669b4872af7d89c37a1852e55165f5)
 
-[Lending](https://testnet.snowtrace.io/address/0xff971acb9e9a8dc8951cc6a184103cad85e3f1ea)
+[DutchAuctionMarketplace](https://testnet.snowtrace.io/address/0xf1ef5fab1a36ffc69b3cb3e3814686b90f11e80e)
+
+[PaymentManager](https://testnet.snowtrace.io/address/0x8edA2c8837eeBaDC6275dFA33273C446aCC853FA)
 
 [GovernanceToken](https://testnet.snowtrace.io/address/0xC3d64c244D53e743f6CFb72A342DCBF89D267187)
+
 
