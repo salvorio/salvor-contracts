@@ -101,7 +101,7 @@ npx hardhat coverage
 ### NOTE:
 **ERC721Dummy.sol** and **SalvorMini** is only for testing purpose. No real use on production.
 
-**CancelLoans** in **SalvorLending.sol** and  **batchCancelOffer** in **SalvorExchange.sol** is not used anymore.
+**CancelLoans** in **SalvorLending.sol** and  **batchCancelOffer** in **SalvorExchange.sol** are not used anymore.
 
 ### The contracts below are example contracts that have been deployed on the Fuji network. They should be used as references for understanding the functionality of the contracts on the Fuji network. However, it is important to note that they are not meant to be used in production and may not have the same level of security and reliability as the contracts deployed on a live network.
 
