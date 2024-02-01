@@ -35,7 +35,7 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     // Addresses for veArt.
     address public veArt;
 
-    // Mapping to track royalty managemenet.
+    // Mapping to track royalty management.
     mapping(address => Royalty) public royalties;
 
     // Default royalty percentage.
@@ -237,7 +237,7 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     }
 
     /**
-     * @notice Calculates and processes a landing fee for a transaction.
+     * @notice Calculates and processes a lending fee for a transaction.
      * @param _from The address from which the fee is being charged.
      * @param _price The price of the transaction for which the fee is calculated.
      * @return The amount of the fee processed.

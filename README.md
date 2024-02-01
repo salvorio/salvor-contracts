@@ -1,11 +1,3 @@
-Detailed information about SalvorLending and SalvorExchange will be provided at a later stage.
-
-# VeArt.sol Information
-
-For technical and functional requirements and more detailed information about the VeArt contract, please refer to the documentation for the VeArt, which can be accessed via the link provided below.
-
-[**VeART Documantaion**](https://docs.google.com/document/d/1wNrZ8olOkYNMOCRqIa-LwWDA3EgKFnE_ryGoomo0Xlw)
-
 # Salvor
 
 This repository contains all contracts for Salvor.
@@ -16,6 +8,19 @@ This repository contains all contracts for Salvor.
 * SalvorLending
 * SalvorExchange
 * AssetManager
+
+# Docs
+
+For technical and functional requirements and more detailed information about the VeArt, AssetManager, SalvorExchange and SalvorLending contracts, please refer to the documentation for the contracts, which can be accessed via the link provided below.
+
+[**VeART Documantaion**](https://docs.google.com/document/d/1wNrZ8olOkYNMOCRqIa-LwWDA3EgKFnE_ryGoomo0Xlw)
+
+[**Asset Manager**](https://docs.google.com/document/d/1dWBhrruURxBSgsTaF0S3rRverXHSJmauH0oUiwNlaJk/edit#heading=h.ehvdfv9zxvvd)
+
+[**Salvor Exchange**](https://docs.google.com/document/d/1pHO9dltzR0vf7tzkupcysuT1oQQ59dHOsXrG95VbRkE/edit#heading=h.ehvdfv9zxvvd)
+
+[**Salvor Lending**](https://docs.google.com/document/d/1zXyk2OYSyE8Aci3b8yZ6IkQBIUyYKV9N2cmEXakoEgA/edit#heading=h.ehvdfv9zxvvd)
+
 
 ![](https://cdn.salvor.io/site/images/l_schema.png)
 
@@ -93,16 +98,10 @@ npx hardhat test
 npx hardhat coverage
 ```
 
-**Coverage results:**
-
-| File                        | Statements | Branches |
-|-----------------------------|------------|----------|
-| NFTCollectible.sol          | 100%       | 100%     |
-| SalvorGovernanceToken.sol          | 100%       | 100%     |
-| VeArt.sol          | 98.17%       | 80.33%     |
-
 ### NOTE:
 **ERC721Dummy.sol** and **SalvorMini** is only for testing purpose. No real use on production.
+
+**CancelLoans** in **SalvorLending.sol** and  **batchCancelOffer** in **SalvorExchange.sol** is not used anymore.
 
 ### The contracts below are example contracts that have been deployed on the Fuji network. They should be used as references for understanding the functionality of the contracts on the Fuji network. However, it is important to note that they are not meant to be used in production and may not have the same level of security and reliability as the contracts deployed on a live network.
 

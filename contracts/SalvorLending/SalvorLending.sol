@@ -159,7 +159,7 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     }
 
     /**
-    * @notice Allows the contract owner to cancel multiple loans. This function is only operational when the contract is not paused and is protected against reentrancy.
+    * @notice Allows the contract owner to cancel multiple loans. This function is only operational when the contract is not paused and is protected against reentrancy. (It's not used anymore)
     * @param _loanOffers Array of loan offers to be cancelled.
     * @param _signatures Array of signatures corresponding to each loan offer.
     */

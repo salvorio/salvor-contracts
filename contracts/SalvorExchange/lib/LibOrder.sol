@@ -71,23 +71,23 @@ library LibOrder {
     }
 
     struct Offer {
-        address nftContractAddress;
-        string salt;
-        string traits;
-        uint tokenId;
-        uint bid;
-        uint duration;
-        uint size;
-        uint startedAt;
-        bool isCollectionOffer;
+        address nftContractAddress; // Address of the NFT contract.
+        string salt; // Unique identifier to ensure the offer's uniqueness.
+        string traits; // Specific traits or characteristics of the NFT, if applicable.
+        uint tokenId; // The token ID of the NFT within the contract.
+        uint bid; // The amount bid for the NFT.
+        uint duration; // Duration of the offer in blocks or time units.
+        uint size; // The size or quantity of the offer.
+        uint startedAt; // Timestamp or block number indicating when the offer started.
+        bool isCollectionOffer; // Indicates if the offer is for an entire collection.
     }
 
     struct Token {
-        uint256 tokenId;
-        string salt;
-        string traits;
-        uint blockNumber;
-        address sender;
+        uint256 tokenId; // The token ID of the NFT.
+        string salt; // Unique identifier associated with the token.
+        string traits; // Specific traits or characteristics of the NFT.
+        uint blockNumber; // The block number when the token was recorded or transferred.
+        address sender; // The address that sent or created the token.
     }
 
     function hash(BatchOrder memory batchOrder) internal pure returns (bytes32) {
