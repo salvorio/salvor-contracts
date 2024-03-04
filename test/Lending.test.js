@@ -109,7 +109,7 @@ describe("Lending", function () {
 		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
 
 		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[4] })
-		let tokenResult = await lendingSigner2.signToken(1, voucher.salt + '1', voucher.traits, this.borrower.address)
+		let tokenResult = await lendingSigner2.signToken(1, voucher.salt + '1', voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 		await this.lending.pause()
 		await expect(this.lending.batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("Pausable: paused")
 		await this.lending.unpause()
@@ -120,7 +120,7 @@ describe("Lending", function () {
 
 		await expect(this.lending.connect(this.signers[3]).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("salt does not match")
 
-		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address)
+		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 
 		await expect(this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("token signature has been expired")
 		await this.lending.setBlockRange(40)
@@ -129,16 +129,16 @@ describe("Lending", function () {
 		await expect(this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("Insufficient balance")
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 
-		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.lender.address)
-		await expect(this.lending.connect(this.lender).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("signer cannot redeem own coupon")
+		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.lender.address, this.nftCollectible.address, this.lender.address)
+		await expect(this.lending.connect(this.lender).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("signer cannot borrow from own loan offer")
 
-		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address)
+		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 		await expect(this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [signature])).to.be.revertedWith("token signature is not valid")
 
-		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.signers[3].address)
+		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.signers[3].address, this.nftCollectible.address, this.lender.address)
 		await expect(this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("token signature does not belong to msg.sender")
 
-		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address)
+		tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
 		const receipt3 = await tx3.wait()
 		expect(receipt3.events.filter(event => event.event === "Borrow").length).to.be.equal(1)
@@ -155,13 +155,13 @@ describe("Lending", function () {
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 
 		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
-		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address)
+		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 
 		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
 		const receipt3 = await tx3.wait()
 		expect(receipt3.events.filter(event => event.event === "Borrow").length).to.be.equal(1)
 
-		await expect(this.lending.connect(this.lender).batchClearDebt([this.nftCollectible.address], ["1"])).to.be.revertedWith("loan period is not finished")
+		await expect(this.lending.connect(this.lender).batchClearDebt([this.nftCollectible.address], ["1"])).to.be.revertedWith("auction period is not finished")
 
 		await network.provider.send("evm_increaseTime", [604801])
 		await network.provider.send("evm_mine")
@@ -184,7 +184,7 @@ describe("Lending", function () {
 		await this.assetManager.connect(this.borrower)['deposit()']({ value: ethers.utils.parseEther("0.4") })
 
 		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
-		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address)
+		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 
 		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
 		const receipt3 = await tx3.wait()
@@ -214,15 +214,45 @@ describe("Lending", function () {
 		await this.assetManager.connect(this.borrower)['deposit()']({ value: ethers.utils.parseEther("0.4") })
 		await this.assetManager.connect(this.signers[5])['deposit()']({ value: ethers.utils.parseEther("1.1") })
 
-		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address)
+		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 
 		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
 		const receipt3 = await tx3.wait()
 		expect(receipt3.events.filter(event => event.event === "Borrow").length).to.be.equal(1)
 
-		let tokenResult2 = await lendingSigner2.signToken(1, voucher1.salt, voucher1.traits, this.borrower.address)
+		let tokenResult2 = await lendingSigner2.signToken(1, voucher1.salt, voucher1.traits, this.borrower.address, this.nftCollectible.address, this.signers[5].address)
 		const tx4 = await this.lending.connect(this.borrower).batchExtend([voucher1], [signature1], [tokenResult2.voucher], [tokenResult2.signature])
 		const receipt4 = await tx4.wait()
 		expect(receipt4.events.filter(event => event.event === "Extend").length).to.be.equal(1)
+	})
+
+	it("make bid for dutch auction", async function () {
+		const lendingSigner = new LendingSigner({ contract: this.lending, signer: this.lender })
+
+		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[4] })
+
+		await this.lending.setBlockRange(40)
+		await this.nftCollectible.setApprovalForAll(this.assetManager.address, true);
+		await this.lending.setAuctionDuration(86400); // a day
+		await this.lending.setDropInterval(1800); // 30 min
+		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
+		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
+
+		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
+		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
+
+		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
+		const receipt3 = await tx3.wait()
+		expect(receipt3.events.filter(event => event.event === "Borrow").length).to.be.equal(1)
+
+		await network.provider.send("evm_increaseTime", [604801])
+		await network.provider.send("evm_mine")
+
+		await expect(this.lending.connect(this.lender).batchClearDebt([this.nftCollectible.address], ["1"])).to.be.revertedWith("auction period is not finished")
+
+
+		const tx4 = await this.lending.connect(this.lender).makeBidForDutchAuctionETH(this.nftCollectible.address, "1", { value: ethers.utils.parseEther("5") })
+		const receipt4 = await tx4.wait()
+		expect(receipt4.events.filter(event => event.event === "DutchAuctionMadeBid").length).to.be.equal(1)
 	})
 })

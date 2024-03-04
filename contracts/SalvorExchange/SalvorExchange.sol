@@ -37,6 +37,8 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
 
     uint256 public blockRange;
 
+    uint256 public version2timestamp;
+
     // events
     event Cancel(address indexed collection, uint256 indexed tokenId, string salt);
     event Redeem(address indexed collection, uint256 indexed tokenId, string salt, uint256 value);
@@ -96,57 +98,39 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
     }
 
     /**
-     * @notice Cancels a batch of offers made by the owner in a single transaction. (It's not used anymore)
-     * @param offers Array of offers to be canceled.
-     * @param signatures Array of signatures corresponding to each offer.
+    * @dev Initializes the contract for version 2
      */
-    function batchCancelOffer(LibOrder.Offer[] calldata offers, bytes[] calldata signatures) external onlyOwner whenNotPaused {
-        uint256 len = offers.length;
-        require(len <= 20, "exceeded the limits");
-        for (uint64 i; i < len; ++i) {
-            cancelOffer(offers[i], signatures[i]);
+    function initializeV2() external onlyOwner {
+        if (version2timestamp == 0) {
+            version2timestamp = block.timestamp;
         }
     }
 
     /**
-     * @notice Accepts a batch of offers for tokens in a single transaction.
-     * @param offers Array of offers to be accepted.
-     * @param signatures Array of signatures corresponding to each offer.
-     * @param tokens Array of tokens for which the offers are made.
-     * @param tokenSignatures Array of signatures corresponding to each token.
-     */
+    * @notice Accepts a batch of offers for tokens in a single transaction.
+    * @param offers Array of offers to be accepted.
+    * @param signatures Array of signatures corresponding to each offer.
+    * @param tokens Array of tokens for which the offers are made.
+    * @param tokenSignatures Array of signatures corresponding to each token.
+    */
     function acceptOfferBatch(LibOrder.Offer[] calldata offers, bytes[] calldata signatures, LibOrder.Token[] calldata tokens, bytes[] calldata tokenSignatures) external whenNotPaused nonReentrant {
         uint256 len = offers.length;
         require(len <= 20, "exceeded the limits");
         uint64 i;
+        IAssetManager.PaymentInfo[] memory payments = new IAssetManager.PaymentInfo[](len);
         for (; i < len; ++i) {
-            acceptOffer(offers[i], signatures[i], tokens[i], tokenSignatures[i]);
+            payments[i] = acceptOffer(offers[i], signatures[i], tokens[i], tokenSignatures[i]);
         }
+
+        IAssetManager(assetManager).payMPBatch(payments);
     }
 
     /**
-     * @notice Accepts a batch of offers for tokens with Ether payment in a single transaction.
-     * @param offers Array of offers to be accepted.
-     * @param signatures Array of signatures corresponding to each offer.
-     * @param tokens Array of tokens for which the offers are made.
-     * @param tokenSignatures Array of signatures corresponding to each token.
-     */
-    function acceptOfferBatchETH(LibOrder.Offer[] calldata offers, bytes[] calldata signatures, LibOrder.Token[] calldata tokens, bytes[] calldata tokenSignatures) external payable whenNotPaused nonReentrant {
-        uint256 len = offers.length;
-        require(len <= 20, "exceeded the limits");
-        IAssetManager(assetManager).deposit{ value: msg.value }(msg.sender);
-        uint64 i;
-        for (; i < len; ++i) {
-            acceptOffer(offers[i], signatures[i], tokens[i], tokenSignatures[i]);
-        }
-    }
-
-    /**
-     * @notice Executes a batch purchase of multiple orders in a single transaction.
-     * @param batchOrders Array of batch orders to be executed.
-     * @param signatures Array of signatures corresponding to each batch order.
-     * @param positions Array of positions indicating the specific item in each batch order.
-     */
+    * @notice Executes a batch purchase of multiple orders in a single transaction.
+    * @param batchOrders Array of batch orders to be executed.
+    * @param signatures Array of signatures corresponding to each batch order.
+    * @param positions Array of positions indicating the specific item in each batch order.
+    */
     function batchBuy(LibOrder.BatchOrder[] calldata batchOrders, bytes[] calldata signatures, uint256[] calldata positions) external
     whenNotPaused
     nonReentrant
@@ -154,17 +138,20 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
         uint256 len = batchOrders.length;
         require(len <= 20, "exceeded the limits");
         uint64 i;
+        IAssetManager.PaymentInfo[] memory payments = new IAssetManager.PaymentInfo[](len);
         for (; i < len; ++i) {
-            buy(batchOrders[i], signatures[i], positions[i]);
+            payments[i] = buy(batchOrders[i], signatures[i], positions[i]);
         }
+
+        IAssetManager(assetManager).payMPBatch(payments);
     }
 
     /**
-     * @notice Executes a batch purchase of multiple orders with Ether payment in a single transaction.
-     * @param batchOrders Array of batch orders to be executed.
-     * @param signatures Array of signatures corresponding to each batch order.
-     * @param positions Array of positions indicating the specific item in each batch order.
-     */
+    * @notice Executes a batch purchase of multiple orders with Ether payment in a single transaction.
+    * @param batchOrders Array of batch orders to be executed.
+    * @param signatures Array of signatures corresponding to each batch order.
+    * @param positions Array of positions indicating the specific item in each batch order.
+    */
     function batchBuyETH(LibOrder.BatchOrder[] calldata batchOrders, bytes[] calldata signatures, uint256[] calldata positions) external payable
     whenNotPaused
     nonReentrant
@@ -173,18 +160,21 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
         require(len <= 20, "exceeded the limits");
         IAssetManager(assetManager).deposit{ value: msg.value }(msg.sender);
         uint64 i;
+        IAssetManager.PaymentInfo[] memory payments = new IAssetManager.PaymentInfo[](len);
         for (; i < len; ++i) {
-            buy(batchOrders[i], signatures[i], positions[i]);
+            payments[i] = buy(batchOrders[i], signatures[i], positions[i]);
         }
+
+        IAssetManager(assetManager).payMPBatch(payments);
     }
 
     /**
-     * @notice Cancels a batch of orders in a single transaction.
-     * @param batchOrders Array of batch orders to be cancelled.
-     * @param signatures Array of signatures corresponding to each batch order.
-     * @param positions Array of positions indicating the specific item in each batch order.
-     */
-    function batchCancelOrder(LibOrder.BatchOrder[] calldata batchOrders, bytes[] calldata signatures, uint256[] calldata positions) external
+    * @notice Cancels a batch of orders in a single transaction.
+    * @param batchOrders Array of batch orders to be cancelled.
+    * @param signatures Array of signatures corresponding to each batch order.
+    * @param positions Array of positions indicating the specific item in each batch order.
+    */
+    function batchCancelOrder(LibOrder.BatchOrder[] calldata batchOrders, bytes[] calldata signatures, uint256[] calldata positions, LibOrder.CancelOrder[] calldata cancelOrderInfos, bytes[] calldata cancelOrderSignatures) external
     whenNotPaused
     nonReentrant
     {
@@ -192,45 +182,36 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
         require(len <= 20, "exceeded the limits");
         uint64 i;
         for (; i < len; ++i) {
-            cancelOrder(batchOrders[i], signatures[i], positions[i]);
+            cancelOrder(batchOrders[i], signatures[i], positions[i], cancelOrderInfos[i], cancelOrderSignatures[i]);
         }
     }
 
     /**
-     * @notice Cancels an individual offer.
-     * @param offer The offer to be cancelled.
-     * @param signature The signature corresponding to the offer.
-     */
-    function cancelOffer(LibOrder.Offer memory offer, bytes memory signature) internal {
-        require(offer.bid > 0, "non existent offer");
-        bytes32 offerKeyHash = LibOrder.hashOfferKey(offer);
-        require(!offerFills[offerKeyHash], "offer has already cancelled");
-        require(offer.size > sizes[offerKeyHash], "offer has already redeemed");
-        require(msg.sender == _validateOffer(offer, signature), "only signer");
-        emit CancelOffer(offer.nftContractAddress, offer.tokenId, offer.salt, offer.isCollectionOffer);
-        offerFills[offerKeyHash] = true;
-    }
-
-    /**
-     * @notice Accepts an individual offer.
-     * @param offer The offer to be accepted.
-     * @param signature The signature corresponding to the offer.
-     * @param token The token associated with the offer.
-     * @param tokenSignature The signature of the token.
-     */
-    function acceptOffer(LibOrder.Offer memory offer, bytes memory signature, LibOrder.Token memory token, bytes memory tokenSignature) internal {
+    * @notice Accepts an individual offer.
+    * @param offer The offer to be accepted.
+    * @param signature The signature corresponding to the offer.
+    * @param token The token associated with the offer.
+    * @param tokenSignature The signature of the token.
+    */
+    function acceptOffer(LibOrder.Offer memory offer, bytes memory signature, LibOrder.Token memory token, bytes memory tokenSignature) internal returns (IAssetManager.PaymentInfo memory) {
         require(keccak256(abi.encodePacked(offer.salt)) == keccak256(abi.encodePacked(token.salt)), "salt does not match");
         address buyer = _validateOffer(offer, signature);
         address seller = msg.sender;
         require(buyer != seller, "signer cannot redeem own coupon");
+        require(token.offerOwner == buyer, "offer owner and buyer does not match");
+        require(token.sender == msg.sender, "token signature does not belong to msg.sender");
+
         require(offer.bid > 0, "non existent offer");
         require((block.timestamp - offer.startedAt) < offer.duration, "offer has expired");
 
         bytes32 offerKeyHash = LibOrder.hashOfferKey(offer);
+        if (offer.startedAt > version2timestamp && version2timestamp > 0) {
+            offerKeyHash = LibOrder.hashOffer(offer);
+        }
         require(!offerFills[offerKeyHash], "offer cancelled");
         require(offer.size > sizes[offerKeyHash], "size is filled");
         require(_hashTypedDataV4(LibOrder.hashToken(token)).recover(tokenSignature) == validator, "token signature is not valid");
-        require(token.sender == msg.sender, "token signature does not belong to msg.sender");
+        require(offer.nftContractAddress == token.nftContractAddress, "contract address does not match");
         require(token.blockNumber + blockRange > block.number, "token signature has been expired");
 
         if (!offer.isCollectionOffer) {
@@ -241,18 +222,24 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
 
         sizes[offerKeyHash] += 1;
 
-        IAssetManager(assetManager).payMP(buyer, seller, offer.nftContractAddress, token.tokenId, offer.bid);
-
         emit AcceptOffer(offer.nftContractAddress, token.tokenId, buyer, offer.salt, offer.bid);
+
+        return IAssetManager.PaymentInfo({
+            buyer: buyer,
+            seller: seller,
+            collection: offer.nftContractAddress,
+            tokenId: token.tokenId,
+            price: offer.bid
+        });
     }
 
     /**
-     * @notice Executes a purchase for a specific order within a batch order.
-     * @param batchOrder The batch order containing the specific order to be executed.
-     * @param signature The signature corresponding to the batch order.
-     * @param position The position of the specific order within the batch order.
-     */
-    function buy(LibOrder.BatchOrder memory batchOrder, bytes memory signature, uint256 position) internal {
+    * @notice Executes a purchase for a specific order within a batch order.
+    * @param batchOrder The batch order containing the specific order to be executed.
+    * @param signature The signature corresponding to the batch order.
+    * @param position The position of the specific order within the batch order.
+    */
+    function buy(LibOrder.BatchOrder memory batchOrder, bytes memory signature, uint256 position) internal returns (IAssetManager.PaymentInfo memory) {
         address seller = _validate(batchOrder, signature);
         address buyer = msg.sender;
         require(buyer != seller, "signer cannot redeem own coupon");
@@ -263,27 +250,45 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
         require((block.timestamp - order.startedAt) < order.duration, "order has expired");
 
         bytes32 orderKeyHash = LibOrder.hashKey(order);
+        if (order.startedAt > version2timestamp && version2timestamp > 0) {
+            orderKeyHash = LibOrder._hashOrderItem(order);
+        }
         require(!fills[orderKeyHash], "order has already redeemed or cancelled");
         fills[orderKeyHash] = true;
 
         emit Redeem(order.nftContractAddress, order.tokenId, order.salt, order.price);
-
-        IAssetManager(assetManager).payMP(buyer, seller, order.nftContractAddress, order.tokenId, order.price);
+        return IAssetManager.PaymentInfo({
+            buyer: buyer,
+            seller: seller,
+            collection: order.nftContractAddress,
+            tokenId: order.tokenId,
+            price: order.price
+        });
     }
 
     /**
-     * @notice Cancels a specific order within a batch order.
-     * @param batchOrder The batch order containing the specific order to be cancelled.
-     * @param signature The signature corresponding to the batch order.
-     * @param position The position of the specific order within the batch order.
-     */
-    function cancelOrder(LibOrder.BatchOrder memory batchOrder, bytes memory signature, uint256 position) internal {
+    * @notice Cancels a specific order within a batch order.
+    * @param batchOrder The batch order containing the specific order to be cancelled.
+    * @param signature The signature corresponding to the batch order.
+    * @param position The position of the specific order within the batch order.
+    * @param cancelOrderInfo associated with the order.
+    * @param cancelOrderSignature The signature corresponding to the cancellation request, ensuring the authenticity of the request.
+    */
+    function cancelOrder(LibOrder.BatchOrder memory batchOrder, bytes memory signature, uint256 position, LibOrder.CancelOrder memory cancelOrderInfo, bytes memory cancelOrderSignature) internal {
         LibOrder.Order memory order = batchOrder.orders[position];
         require(order.price > 0, "non existent order");
         require(msg.sender == _validate(batchOrder, signature), "only signer");
-
+        require(_hashTypedDataV4(LibOrder.hashCancelOrder(cancelOrderInfo)).recover(cancelOrderSignature) == validator, "validator signature is not valid");
+        require(msg.sender == cancelOrderInfo.sender, "Only the original sender can cancel this order.");
+        require(cancelOrderInfo.blockNumber + blockRange > block.number, "cancel order signature has been expired");
+        require(keccak256(abi.encodePacked(batchOrder.salt)) == keccak256(abi.encodePacked(cancelOrderInfo.salt)), "salt does not match");
+        require(cancelOrderInfo.tokenId == order.tokenId, "tokenId does not match");
+        require(cancelOrderInfo.nftContractAddress == order.nftContractAddress, "nftContractAddress does not match");
 
         bytes32 orderKeyHash = LibOrder.hashKey(order);
+        if (order.startedAt > version2timestamp && version2timestamp > 0) {
+            orderKeyHash = LibOrder._hashOrderItem(order);
+        }
         require(!fills[orderKeyHash], "order has already redeemed or cancelled");
         fills[orderKeyHash] = true;
 
@@ -303,48 +308,32 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
     }
 
     /**
-    * @notice Returns the contract's Ether balance.
-    * @return The Ether balance of the contract.
+    * @notice Validates a batch order by verifying its signature and returns the signer's address.
+    * @param batchOrder The batch order to be validated.
+    * @param signature The cryptographic signature associated with the batch order.
+    * @return The address of the signer of the batch order.
     */
-    function balance() external view returns (uint) {
-        return address(this).balance;
-    }
-
-    /**
-    * @notice Calculates a portion of a bid based on a given percentage. (It's not used)
-     * @param _totalBid The total bid amount.
-     * @param _percentage The percentage to calculate from the total bid.
-     * @return The calculated portion of the bid.
-     */
-    function _getPortionOfBid(uint256 _totalBid, uint96 _percentage) internal pure returns (uint256) { return (_totalBid * (_percentage)) / 10000; }
-
-    /**
-     * @notice Validates a batch order by verifying its signature and returns the signer's address.
-     * @param batchOrder The batch order to be validated.
-     * @param signature The cryptographic signature associated with the batch order.
-     * @return The address of the signer of the batch order.
-     */
     function _validate(LibOrder.BatchOrder memory batchOrder, bytes memory signature) public view returns (address) {
         bytes32 hash = LibOrder.hash(batchOrder);
         return _hashTypedDataV4(hash).recover(signature);
     }
 
     /**
-     * @notice Validates an offer by verifying its signature and returns the signer's address.
-     * @param offer The offer to be validated.
-     * @param signature The cryptographic signature associated with the offer.
-     * @return The address of the signer of the offer.
-     */
+    * @notice Validates an offer by verifying its signature and returns the signer's address.
+    * @param offer The offer to be validated.
+    * @param signature The cryptographic signature associated with the offer.
+    * @return The address of the signer of the offer.
+    */
     function _validateOffer(LibOrder.Offer memory offer, bytes memory signature) public view returns (address) {
         bytes32 hash = LibOrder.hashOffer(offer);
         return _hashTypedDataV4(hash).recover(signature);
     }
 
     /**
-     * @notice Modifier to ensure an address is not the zero address.
-     * @dev Throws if the provided address is the zero address.
-     * @param _address The address to be validated.
-     */
+    * @notice Modifier to ensure an address is not the zero address.
+    * @dev Throws if the provided address is the zero address.
+    * @param _address The address to be validated.
+    */
     modifier addressIsNotZero(address _address) {
         require(_address != address(0), "Given address must be a non-zero address");
         _;

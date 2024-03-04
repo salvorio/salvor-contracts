@@ -12,20 +12,17 @@ import "@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgra
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 
-import "../NFTCollectible/INFTCollectible.sol";
-import "../PaymentManager/IPaymentManager.sol";
 import "../AssetManager/IAssetManager.sol";
 import "./lib/LibLending.sol";
-import "../libs/LibShareholder.sol";
 
 /**
 * @title Salvor Lending
 * @notice Operates on the Ethereum-based blockchain, providing a lending pool platform where users can lend and borrow NFTs. Each pool is characterized by parameters such as the duration of the loan, interest rate.
 */
 contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradeable, OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {
+
     // Structure defining a lending pool
     struct LendingPool {
         uint256 duration;   // Duration of the loan in the pool in terms of a time unit (e.g., seconds, blocks)
@@ -42,6 +39,19 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
         uint256 duration;  // Duration of the loan, similar to the duration in LendingPool
         uint256 rate;      // Interest rate for this specific loan, similar to the rate in LendingPool
         uint256 startedAt; // Timestamp indicating when the loan started
+    }
+
+    struct DutchAuction {
+        // duration of the auction
+        uint256 duration;
+        // drop interval timestamp. e.g 5 minutes
+        uint256 dropInterval;
+        // the auction starting time
+        uint256 startTime;
+        // maximum amount for the nft at the beginning of the auction
+        uint256 startPrice;
+        // minimum amount for the nft at the end of auction
+        uint256 endPrice;
     }
 
     string private constant SIGNING_DOMAIN = "SalvorLending";
@@ -71,14 +81,31 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     // Defines the range of blocks within which certain operations or validations must be performed
     uint256 public blockRange;
 
+    // Duration of the auction in seconds.
+    uint64 public auctionDuration;
+
+    // Time interval between price drops in the Dutch auction.
+    uint64 public dropInterval;
+
+    // Mapping of token addresses to token IDs to their respective Dutch auction details.
+    mapping(address => mapping(uint256 => DutchAuction)) public dutchAuctions;
+
     // events
     event SetPool(address indexed collection, uint96 protocolFee, uint256 duration, uint256 rate, bool isActive);
-    event CancelLoan(address indexed collection, string salt, bytes32 hash);
-    event Extend(address indexed collection, uint256 indexed tokenId, string salt, uint256 amount, uint256 fee, uint256 repaidAmount);
-    event Borrow(address indexed collection, uint256 indexed tokenId, string salt, uint256 amount, uint256 fee);
+    event Extend(address indexed collection, uint256 indexed tokenId, string salt, uint256 amount, uint256 repaidAmount);
+    event Borrow(address indexed collection, uint256 indexed tokenId, string salt, uint256 amount);
     event Repay(address indexed collection, uint256 indexed tokenId, uint256 repaidAmount);
     event ClearDebt(address indexed collection, uint256 indexed tokenId);
-
+    event DutchAuctionMadeBid(address indexed collection, uint256 indexed tokenId, address indexed seller, uint256 amount, uint256 endPrice);
+    event DutchAuctionCreated(
+        address indexed collection,
+        uint256 indexed tokenId,
+        uint64 duration,
+        uint64 dropInterval,
+        uint256 startPrice,
+        uint256 endPrice,
+        uint256 startTime
+    );
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -96,7 +123,7 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
 
     /**
     * @dev pause contract, restricting certain operations
-     */
+    */
     function pause() external onlyOwner {
         _pause();
     }
@@ -125,6 +152,24 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     }
 
     /**
+    * @notice Sets the duration of the auction.
+    * @param _auctionDuration The duration of the auction in seconds.
+    */
+    function setAuctionDuration(uint64 _auctionDuration) external onlyOwner {
+        auctionDuration = _auctionDuration;
+    }
+
+    /**
+     * @notice Sets the interval between price drops in the Dutch auction.
+     *         Note: Must set auction duration first.
+     * @param _dropInterval The time interval between price drops in seconds.
+     */
+    function setDropInterval(uint64 _dropInterval) external onlyOwner {
+        require(auctionDuration > _dropInterval, "Duration period exceed the limit");
+        dropInterval = _dropInterval;
+    }
+
+    /**
     * @notice Assigns a new validator address. Restricted to actions by the contract owner.
     * @param _validator The new validator's address, which cannot be the zero address.
     */
@@ -150,39 +195,13 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     */
     function setPool(address _collection, uint96 _protocolFee, uint256 _duration, uint256 _rate, bool _isActive) external {
         require(msg.sender == owner() || msg.sender == admin, "not authorized");
+        require(_duration > 0 && _duration % 86400 == 0, "day unit must be entered");
         lendingPools[_collection].duration = _duration;
         lendingPools[_collection].protocolFee = _protocolFee;
         lendingPools[_collection].rate = _rate;
         lendingPools[_collection].isActive = _isActive;
         IERC721Upgradeable(_collection).setApprovalForAll(assetManager, true);
         emit SetPool(_collection, _protocolFee, _duration, _rate, _isActive);
-    }
-
-    /**
-    * @notice Allows the contract owner to cancel multiple loans. This function is only operational when the contract is not paused and is protected against reentrancy. (It's not used anymore)
-    * @param _loanOffers Array of loan offers to be cancelled.
-    * @param _signatures Array of signatures corresponding to each loan offer.
-    */
-    function cancelLoans(LibLending.LoanOffer[] calldata _loanOffers, bytes[] calldata _signatures) external onlyOwner whenNotPaused nonReentrant {
-        uint256 len = _loanOffers.length;
-        for (uint256 i; i < len; ++i) {
-            cancelLoan(_loanOffers[i], _signatures[i]);
-        }
-    }
-
-    /**
-    * @notice Internal function to cancel an individual loan. It verifies the signer's authorization and ensures the loan has not been cancelled previously.
-    * @param _loanOffer The loan offer to be cancelled.
-    * @param _signature Signature associated with the loan offer.
-    */
-    function cancelLoan(LibLending.LoanOffer calldata _loanOffer, bytes memory _signature)
-    internal
-    onlySigner(_validate(_loanOffer, _signature))
-    isNotCancelled(LibLending.hashKey(_loanOffer))
-    {
-        bytes32 loanKeyHash = LibLending.hashKey(_loanOffer);
-        fills[loanKeyHash] = true;
-        emit CancelLoan(_loanOffer.nftContractAddress, _loanOffer.salt, loanKeyHash);
     }
 
     /**
@@ -201,9 +220,11 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     ) public whenNotPaused nonReentrant assertNotContract {
         uint256 len = _loanOffers.length;
         require(len <= 20, "exceeded the limits");
+        IAssetManager.LendingPaymentInfo[] memory payments = new IAssetManager.LendingPaymentInfo[](len);
         for (uint64 i; i < len; ++i) {
-            borrow(_loanOffers[i], _signatures[i], _tokens[i], _tokenSignatures[i]);
+            payments[i] = borrow(_loanOffers[i], _signatures[i], _tokens[i], _tokenSignatures[i]);
         }
+        IAssetManager(assetManager).payLendingBatch(payments);
     }
 
     /**
@@ -238,9 +259,11 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     {
         uint256 len = nftContractAddresses.length;
         require(len <= 20, "exceeded the limits");
+        IAssetManager.LendingPaymentInfo[] memory payments = new IAssetManager.LendingPaymentInfo[](len);
         for (uint64 i; i < len; ++i) {
-            repay(nftContractAddresses[i], _tokenIds[i]);
+            payments[i] = repay(nftContractAddresses[i], _tokenIds[i]);
         }
+        IAssetManager(assetManager).lendingRepayBatch(payments);
     }
 
     /**
@@ -258,9 +281,12 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
         uint256 len = nftContractAddresses.length;
         require(len <= 20, "exceeded the limits");
         IAssetManager(assetManager).deposit{ value: msg.value }(msg.sender);
+        IAssetManager.LendingPaymentInfo[] memory payments = new IAssetManager.LendingPaymentInfo[](len);
+
         for (uint64 i; i < len; ++i) {
-            repay(nftContractAddresses[i], _tokenIds[i]);
+            payments[i] = repay(nftContractAddresses[i], _tokenIds[i]);
         }
+        IAssetManager(assetManager).lendingRepayBatch(payments);
     }
 
     /**
@@ -283,9 +309,12 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     {
         uint256 len = _loanOffers.length;
         require(len <= 20, "exceeded the limits");
+        IAssetManager.LendingPaymentInfo[] memory payments = new IAssetManager.LendingPaymentInfo[](len);
+
         for (uint64 i; i < len; ++i) {
-            extend(_loanOffers[i], _signatures[i], _tokens[i],_tokenSignatures[i]);
+            payments[i] = extend(_loanOffers[i], _signatures[i], _tokens[i],_tokenSignatures[i]);
         }
+        IAssetManager(assetManager).payLendingBatch(payments);
     }
 
     /**
@@ -310,116 +339,83 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
         uint256 len = _loanOffers.length;
         require(len <= 20, "exceeded the limits");
         IAssetManager(assetManager).deposit{ value: msg.value }(msg.sender);
+        IAssetManager.LendingPaymentInfo[] memory payments = new IAssetManager.LendingPaymentInfo[](len);
+
         for (uint64 i; i < len; ++i) {
-            extend(_loanOffers[i], _signatures[i], _tokens[i],_tokenSignatures[i]);
+            payments[i] = extend(_loanOffers[i], _signatures[i], _tokens[i],_tokenSignatures[i]);
+        }
+        IAssetManager(assetManager).payLendingBatch(payments);
+    }
+
+    /**
+    * @notice Allows a user to make a bid for a Dutch auction using ETH.
+    * @param _nftContractAddress The address of the NFT contract.
+    * @param _tokenId The ID of the token being bid on.
+    */
+    function makeBidForDutchAuctionETH(address _nftContractAddress, uint256 _tokenId)
+    external
+    payable
+    {
+        IAssetManager(assetManager).deposit{ value: msg.value }(msg.sender);
+        makeBidForDutchAuction(_nftContractAddress, _tokenId);
+    }
+
+    /**
+     * @notice Allows a bidder to make a bid for a Dutch auction.
+     * @param _nftContractAddress The address of the NFT contract.
+     * @param _tokenId The token ID of the NFT being auctioned.
+     */
+    function makeBidForDutchAuction(address _nftContractAddress, uint256 _tokenId)
+    public
+    whenNotPaused
+    nonReentrant
+    auctionStarted(_nftContractAddress, _tokenId)
+    {
+        address lender = items[_nftContractAddress][_tokenId].lender;
+        require(lender != address(0), "NFT is not deposited");
+        uint256 price = getDutchPrice(_nftContractAddress, _tokenId);
+        emit DutchAuctionMadeBid(_nftContractAddress, _tokenId, lender, price, dutchAuctions[_nftContractAddress][_tokenId].endPrice);
+
+        IAssetManager(assetManager).dutchPay(_nftContractAddress, _tokenId, msg.sender, lender, price, dutchAuctions[_nftContractAddress][_tokenId].endPrice);
+        delete dutchAuctions[_nftContractAddress][_tokenId];
+        delete items[_nftContractAddress][_tokenId];
+    }
+
+    /**
+    * @notice the current dutch price by calculating the steps
+    * @param _nftContractAddress nft contract address
+    * @param _tokenId nft tokenId
+    */
+    function getDutchPrice(address _nftContractAddress, uint256 _tokenId) public view returns (uint256) {
+        if (block.timestamp < dutchAuctions[_nftContractAddress][_tokenId].startTime) {
+            return dutchAuctions[_nftContractAddress][_tokenId].startPrice;
+        }
+
+        if ((block.timestamp - dutchAuctions[_nftContractAddress][_tokenId].startTime) > dutchAuctions[_nftContractAddress][_tokenId].duration) {
+            return dutchAuctions[_nftContractAddress][_tokenId].endPrice;
+        } else {
+            uint256 diffPrice = dutchAuctions[_nftContractAddress][_tokenId].startPrice - dutchAuctions[_nftContractAddress][_tokenId].endPrice;
+            uint256 diffDate = block.timestamp - dutchAuctions[_nftContractAddress][_tokenId].startTime;
+            uint256 dropsPerStep = diffPrice / (dutchAuctions[_nftContractAddress][_tokenId].duration / dutchAuctions[_nftContractAddress][_tokenId].dropInterval);
+            uint256 steps = diffDate / dutchAuctions[_nftContractAddress][_tokenId].dropInterval;
+            return dutchAuctions[_nftContractAddress][_tokenId].startPrice - (steps * dropsPerStep);
         }
     }
 
     /**
-    * @notice Extends an existing loan offer. This function is internal and checks that the loan has not been cancelled.
-    * @param _loanOffer The loan offer to be extended.
-    * @param signature The signature of the lender for validation.
-    * @param token The token associated with the NFT for the loan.
-    * @param tokenSignature The signature for the token, ensuring its authenticity.
+    * @notice Calculates the total repayment amount for a set of loans.
+    * @param _nftContractAddresses The addresses of the NFT contracts for the loans.
+    * @param _tokenIds The token IDs of the NFTs for the loans.
+    * @return uint256 The total repayment amount for the specified loans.
     */
-    function extend(LibLending.LoanOffer memory _loanOffer, bytes memory signature, LibLending.Token memory token, bytes memory tokenSignature)
-    internal
-    isNotCancelled(LibLending.hashKey(_loanOffer))
-    {
-        require(items[_loanOffer.nftContractAddress][token.tokenId].borrower == msg.sender, "there is no collateralized item belongs to msg.sender");
-
-        validateLoanOffer(_loanOffer, token, tokenSignature);
-
-        address lender = _validate(_loanOffer, signature);
-        require(msg.sender != lender, "signer cannot borrow from own loan offer");
-
-
-        uint256 fee = IAssetManager(assetManager).payLandingFee(lender, _loanOffer.amount);
-
-        IAssetManager(assetManager).transferFrom(lender, msg.sender, _loanOffer.amount - fee);
-
-        uint256 payment = _calculateRepayment(items[_loanOffer.nftContractAddress][token.tokenId].amount, items[_loanOffer.nftContractAddress][token.tokenId].rate);
-        emit Extend(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.salt, _loanOffer.amount, fee, payment);
-
-        // payment sent to previous lender
-        IAssetManager(assetManager).transferFrom(msg.sender, items[_loanOffer.nftContractAddress][token.tokenId].lender, payment);
-
-        items[_loanOffer.nftContractAddress][token.tokenId].lender = lender;
-        items[_loanOffer.nftContractAddress][token.tokenId].amount = _loanOffer.amount;
-        items[_loanOffer.nftContractAddress][token.tokenId].duration = lendingPools[_loanOffer.nftContractAddress].duration;
-        items[_loanOffer.nftContractAddress][token.tokenId].rate = lendingPools[_loanOffer.nftContractAddress].rate;
-        items[_loanOffer.nftContractAddress][token.tokenId].startedAt = block.timestamp;
-    }
-
-    /**
-    * @notice Allows borrowing against an NFT based on a loan offer. This function is internal and ensures the loan has not already been taken and not been cancelled.
-    * @param _loanOffer The loan offer against which the NFT is being borrowed.
-    * @param signature The lender's signature for validation.
-    * @param token The token information of the NFT being used as collateral.
-    * @param tokenSignature The signature validating the token's authenticity.
-    */
-    function borrow(LibLending.LoanOffer memory _loanOffer, bytes memory signature, LibLending.Token memory token, bytes memory tokenSignature)
-    internal
-    isNotCancelled(LibLending.hashKey(_loanOffer))
-    {
-        require(items[_loanOffer.nftContractAddress][token.tokenId].startedAt == 0, "has been already borrowed");
-
-        validateLoanOffer(_loanOffer, token, tokenSignature);
-
-        address lender = _validate(_loanOffer, signature);
-        require(msg.sender != lender, "signer cannot redeem own coupon");
-
-        IAssetManager(assetManager).nftTransferFrom(msg.sender, address(this), _loanOffer.nftContractAddress, token.tokenId);
-
-        uint256 fee = IAssetManager(assetManager).payLandingFee(lender, _loanOffer.amount);
-        emit Borrow(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.salt, _loanOffer.amount, fee);
-
-        IAssetManager(assetManager).transferFrom(lender, msg.sender, _loanOffer.amount - fee);
-
-        items[_loanOffer.nftContractAddress][token.tokenId].borrower = msg.sender;
-        items[_loanOffer.nftContractAddress][token.tokenId].lender = lender;
-        items[_loanOffer.nftContractAddress][token.tokenId].amount = _loanOffer.amount;
-        items[_loanOffer.nftContractAddress][token.tokenId].duration = lendingPools[_loanOffer.nftContractAddress].duration;
-        items[_loanOffer.nftContractAddress][token.tokenId].rate = lendingPools[_loanOffer.nftContractAddress].rate;
-        items[_loanOffer.nftContractAddress][token.tokenId].startedAt = block.timestamp;
-    }
-
-    /**
-    * @notice Repays the loan for a specific NFT and returns the NFT to the borrower. This function is internal.
-    * @param nftContractAddress The address of the NFT contract.
-    * @param _tokenId The ID of the token (NFT) for which the loan is being repaid.
-    */
-    function repay(address nftContractAddress, uint256 _tokenId) internal {
-        address borrower = items[nftContractAddress][_tokenId].borrower;
-        address lender = items[nftContractAddress][_tokenId].lender;
-        require(borrower == msg.sender, "msg.sender is not borrower");
-
-        uint256 payment = _calculateRepayment(items[nftContractAddress][_tokenId].amount, items[nftContractAddress][_tokenId].rate);
-
-        emit Repay(nftContractAddress, _tokenId, payment);
-
-        IAssetManager(assetManager).transferFrom(borrower, lender, payment);
-
-        IAssetManager(assetManager).nftTransferFrom(address(this), borrower, nftContractAddress, _tokenId);
-
-        delete items[nftContractAddress][_tokenId];
-    }
-
-    /**
-    * @notice Clears the debt associated with a specific NFT after the loan period has finished. This function is internal.
-    * @param nftContractAddress The address of the NFT contract.
-    * @param _tokenId The ID of the token (NFT) for which the debt is being cleared.
-    */
-    function clearDebt(address nftContractAddress, uint256 _tokenId) internal {
-        address lender = items[nftContractAddress][_tokenId].lender;
-        require(lender == msg.sender, "msg.sender is not lender");
-        require((block.timestamp - items[nftContractAddress][_tokenId].startedAt) > items[nftContractAddress][_tokenId].duration, "loan period is not finished");
-
-        emit ClearDebt(nftContractAddress, _tokenId);
-
-        IAssetManager(assetManager).nftTransferFrom(address(this), lender, nftContractAddress, _tokenId);
-
-        delete items[nftContractAddress][_tokenId];
+    function getCalculateRepayLoanAmount(address[] memory _nftContractAddresses, uint256[] memory _tokenIds) external view returns (uint256) {
+        uint256 len = _nftContractAddresses.length;
+        uint256 totalInterest;
+        for (uint64 i; i < len; ++i) {
+            Loan memory item = items[_nftContractAddresses[i]][_tokenIds[i]];
+            totalInterest += _calculateRepayment(item.amount, item.rate, item.startedAt, item.duration);
+        }
+        return totalInterest;
     }
 
     /**
@@ -446,32 +442,193 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     }
 
     /**
+    * @notice Extends an existing loan offer. This function is internal and checks that the loan has not been cancelled.
+    * @param _loanOffer The loan offer to be extended.
+    * @param signature The signature of the lender for validation.
+    * @param token The token associated with the NFT for the loan.
+    * @param tokenSignature The signature for the token, ensuring its authenticity.
+    */
+    function extend(LibLending.LoanOffer memory _loanOffer, bytes memory signature, LibLending.Token memory token, bytes memory tokenSignature)
+    internal
+    isNotCancelled(LibLending.hashKey(_loanOffer))
+    returns (IAssetManager.LendingPaymentInfo memory)
+    {
+        Loan memory item = items[_loanOffer.nftContractAddress][token.tokenId];
+        require(item.borrower == msg.sender, "there is no collateralized item belongs to msg.sender");
+        if (dutchAuctions[_loanOffer.nftContractAddress][token.tokenId].startTime > 0) {
+            require(block.timestamp < dutchAuctions[_loanOffer.nftContractAddress][token.tokenId].startTime, "Auction has already started. Cannot proceed with the operation");
+        }
+
+        address lender = validateLoanOffer(_loanOffer, signature, token, tokenSignature);
+
+        uint256 payment = _calculateRepayment(item.amount, item.rate, item.startedAt, item.duration);
+        emit Extend(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.salt, _loanOffer.amount, payment);
+
+        address previousLender = item.lender;
+        LendingPool memory lendingPool = lendingPools[_loanOffer.nftContractAddress];
+
+        items[_loanOffer.nftContractAddress][token.tokenId].lender = lender;
+        items[_loanOffer.nftContractAddress][token.tokenId].amount = _loanOffer.amount;
+        items[_loanOffer.nftContractAddress][token.tokenId].duration = lendingPool.duration;
+        items[_loanOffer.nftContractAddress][token.tokenId].rate = lendingPool.rate;
+        items[_loanOffer.nftContractAddress][token.tokenId].startedAt = block.timestamp;
+
+        uint256 endPrice = _loanOffer.amount + ((_loanOffer.amount * lendingPool.rate) / 1 ether);
+
+        setDutchAuction(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.amount*3, endPrice, block.timestamp + lendingPool.duration);
+
+        return IAssetManager.LendingPaymentInfo({
+            lender: lender,
+            borrower: msg.sender,
+            previousLender: previousLender,
+            collection: address(0x0),
+            tokenId: 0,
+            amount: _loanOffer.amount,
+            repaymentAmount: payment
+        });
+    }
+
+    /**
+    * @notice Allows borrowing against an NFT based on a loan offer. This function is internal and ensures the loan has not already been taken and not been cancelled.
+    * @param _loanOffer The loan offer against which the NFT is being borrowed.
+    * @param signature The lender's signature for validation.
+    * @param token The token information of the NFT being used as collateral.
+    * @param tokenSignature The signature validating the token's authenticity.
+    */
+    function borrow(LibLending.LoanOffer memory _loanOffer, bytes memory signature, LibLending.Token memory token, bytes memory tokenSignature)
+    internal
+    isNotCancelled(LibLending.hashKey(_loanOffer))
+    returns (IAssetManager.LendingPaymentInfo memory)
+    {
+        require(items[_loanOffer.nftContractAddress][token.tokenId].startedAt == 0, "has been already borrowed");
+
+        address lender = validateLoanOffer(_loanOffer, signature, token, tokenSignature);
+
+        emit Borrow(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.salt, _loanOffer.amount);
+
+        items[_loanOffer.nftContractAddress][token.tokenId].borrower = msg.sender;
+        items[_loanOffer.nftContractAddress][token.tokenId].lender = lender;
+        items[_loanOffer.nftContractAddress][token.tokenId].amount = _loanOffer.amount;
+        items[_loanOffer.nftContractAddress][token.tokenId].duration = lendingPools[_loanOffer.nftContractAddress].duration;
+        items[_loanOffer.nftContractAddress][token.tokenId].rate = lendingPools[_loanOffer.nftContractAddress].rate;
+        items[_loanOffer.nftContractAddress][token.tokenId].startedAt = block.timestamp;
+
+        uint256 endPrice = _loanOffer.amount + ((_loanOffer.amount * lendingPools[_loanOffer.nftContractAddress].rate) / 1 ether);
+
+        setDutchAuction(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.amount*3, endPrice, block.timestamp + lendingPools[_loanOffer.nftContractAddress].duration);
+
+        return IAssetManager.LendingPaymentInfo({
+            lender: lender,
+            borrower: msg.sender,
+            previousLender: address(0x0),
+            collection: _loanOffer.nftContractAddress,
+            tokenId: token.tokenId,
+            amount: _loanOffer.amount,
+            repaymentAmount: 0
+        });
+    }
+
+    /**
+    * @notice Repays the loan for a specific NFT and returns the NFT to the borrower. This function is internal.
+    * @param nftContractAddress The address of the NFT contract.
+    * @param _tokenId The ID of the token (NFT) for which the loan is being repaid.
+    */
+    function repay(address nftContractAddress, uint256 _tokenId) internal returns(IAssetManager.LendingPaymentInfo memory) {
+        Loan memory item = items[nftContractAddress][_tokenId];
+
+        require(item.borrower == msg.sender, "msg.sender is not borrower");
+        if (dutchAuctions[nftContractAddress][_tokenId].startTime > 0) {
+            require(block.timestamp < dutchAuctions[nftContractAddress][_tokenId].startTime, "Auction has already started. Cannot proceed with the operation");
+        }
+
+        uint256 payment = _calculateRepayment(item.amount, item.rate, item.startedAt, item.duration);
+
+        emit Repay(nftContractAddress, _tokenId, payment);
+
+        delete items[nftContractAddress][_tokenId];
+        delete dutchAuctions[nftContractAddress][_tokenId];
+
+        return IAssetManager.LendingPaymentInfo({
+            borrower: item.borrower,
+            lender: item.lender,
+            previousLender: address(0x0),
+            collection: nftContractAddress,
+            tokenId: _tokenId,
+            amount: payment,
+            repaymentAmount: 0
+        });
+    }
+
+    /**
+    * @notice Clears the debt associated with a specific NFT after the loan period has finished. This function is internal.
+    * @param nftContractAddress The address of the NFT contract.
+    * @param _tokenId The ID of the token (NFT) for which the debt is being cleared.
+    */
+    function clearDebt(address nftContractAddress, uint256 _tokenId) internal {
+        Loan memory item = items[nftContractAddress][_tokenId];
+
+        require(item.lender == msg.sender, "msg.sender is not lender");
+        if (dutchAuctions[nftContractAddress][_tokenId].startTime > 0) {
+            require(block.timestamp > (dutchAuctions[nftContractAddress][_tokenId].startTime + dutchAuctions[nftContractAddress][_tokenId].duration), "auction period is not finished");
+        } else {
+            require(block.timestamp > (items[nftContractAddress][_tokenId].duration + items[nftContractAddress][_tokenId].startedAt), "loan period is not finished");
+        }
+
+        emit ClearDebt(nftContractAddress, _tokenId);
+
+        IAssetManager(assetManager).nftTransferFrom(address(this), item.lender, nftContractAddress, _tokenId);
+
+        delete items[nftContractAddress][_tokenId];
+        delete dutchAuctions[nftContractAddress][_tokenId];
+    }
+
+    /**
+    * @notice allows to create a dutch auction.
+    * @param _nftContractAddress nft contract address
+    * @param _tokenId nft tokenId
+    * @param _startPrice the starting price at which the price will be decreased
+    * @param _endPrice the ending price at which the price will be stop decreasing
+    */
+    function setDutchAuction(
+        address _nftContractAddress,
+        uint256 _tokenId,
+        uint256 _startPrice,
+        uint256 _endPrice,
+        uint256 _startTime
+    ) internal {
+        dutchAuctions[_nftContractAddress][_tokenId].startTime = _startTime;
+        dutchAuctions[_nftContractAddress][_tokenId].duration = auctionDuration;
+        dutchAuctions[_nftContractAddress][_tokenId].dropInterval = dropInterval;
+        dutchAuctions[_nftContractAddress][_tokenId].startPrice = _startPrice;
+        dutchAuctions[_nftContractAddress][_tokenId].endPrice = _endPrice;
+
+        emit DutchAuctionCreated(_nftContractAddress, _tokenId, auctionDuration, dropInterval, _startPrice, _endPrice, _startTime);
+    }
+
+    /**
     * @notice Validates a loan offer and corresponding token. This internal function ensures the loan offer and token meet various criteria including active pool, valid token signature, matching salts, sender authenticity, and signature expiry.
     * @param _loanOffer The loan offer to validate.
     * @param _token The token associated with the loan offer.
     * @param _tokenSignature The signature of the token.
     */
-    function validateLoanOffer(LibLending.LoanOffer memory _loanOffer, LibLending.Token memory _token, bytes memory _tokenSignature) internal {
+    function validateLoanOffer(LibLending.LoanOffer memory _loanOffer, bytes memory signature, LibLending.Token memory _token, bytes memory _tokenSignature) internal returns (address) {
         require(_loanOffer.amount > 0, "lend amount cannot be 0");
         require(lendingPools[_loanOffer.nftContractAddress].isActive, "pool is not active");
         require(_hashTypedDataV4(LibLending.hashToken(_token)).recover(_tokenSignature) == validator, "token signature is not valid");
         require(keccak256(abi.encodePacked(_token.salt)) == keccak256(abi.encodePacked(_loanOffer.salt)), "salt does not match");
-        require(_token.sender == msg.sender, "token signature does not belong to msg.sender");
+        require(_token.borrower == msg.sender, "token signature does not belong to msg.sender");
+        require(_loanOffer.nftContractAddress == _token.nftContractAddress, "contract address does not match");
         require(_token.blockNumber + blockRange > block.number, "token signature has been expired");
 
         bytes32 hash = LibLending.hashKey(_loanOffer);
 
         require(_loanOffer.size > sizes[hash], "size is filled");
+        address lender = _validate(_loanOffer, signature);
+        require(msg.sender != lender, "signer cannot borrow from own loan offer");
+        require(lender == _token.lender, "token and loan offer owner does not match");
         sizes[hash] += 1;
+        return lender;
     }
-
-    /**
-    * @notice Calculates a portion of a bid based on a percentage. This internal pure function is used for fee calculations.
-    * @param _totalBid The total bid amount.
-    * @param _percentage The percentage to calculate the portion of the bid.
-    * @return The calculated portion of the bid.
-    */
-    function _getPortionOfBid(uint256 _totalBid, uint96 _percentage) internal pure returns (uint256) { return (_totalBid * (_percentage)) / 10000; }
 
     /**
     * @notice Calculates the total repayment amount including interest. This internal pure function is used for calculating loan repayments.
@@ -479,8 +636,15 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     * @param _interest The interest rate applied to the loan.
     * @return The total repayment amount.
     */
-    function _calculateRepayment(uint256 _totalBid, uint256 _interest) internal pure returns (uint256) {
-        return _totalBid + ((_totalBid * (_interest)) / 1 ether);
+    function _calculateRepayment(uint256 _totalBid, uint256 _interest, uint256 _startedAt, uint256 _duration) internal view returns (uint256) {
+        uint256 elapsedDay = ((block.timestamp - _startedAt) / 86400) + 1;
+        uint256 totalDays = _duration / 86400;
+        if (totalDays < elapsedDay) {
+            return _totalBid + ((_totalBid * _interest) / 1 ether);
+        } else {
+            return _totalBid + ((_totalBid * _interest * elapsedDay) / (1 ether * totalDays));
+        }
+
     }
 
     /**
@@ -515,6 +679,18 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     */
     modifier addressIsNotZero(address _address) {
         require(_address != address(0), "Given address must be a non-zero address");
+        _;
+    }
+
+    /**
+    * @notice makes sure auction is started
+    * @param _nftContractAddress nft contract address
+    * @param _tokenId nft tokenId
+    */
+    modifier auctionStarted(address _nftContractAddress, uint256 _tokenId) {
+        uint256 startTime = dutchAuctions[_nftContractAddress][_tokenId].startTime;
+
+        require(block.timestamp > startTime, "Auction is not started");
         _;
     }
 }

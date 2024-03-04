@@ -82,9 +82,9 @@ class ExchangeSigner {
 		}
 	}
 
-	async signToken(tokenId, salt, traits, sender) {
+	async signToken(tokenId, salt, traits, sender, offerOwner, nftContractAddress) {
 		const latestBlockNumber = await ethers.provider.getBlockNumber()
-		const voucher = { tokenId, salt, traits, blockNumber: latestBlockNumber, sender }
+		const voucher = { tokenId, salt, traits, blockNumber: latestBlockNumber, sender, offerOwner, nftContractAddress }
 		const domain = await this._signingDomain()
 		const types = {
 			Token: [
@@ -92,7 +92,9 @@ class ExchangeSigner {
 				{ name: "salt", type: "string" },
 				{ name: "traits", type: "string" },
 				{ name: "blockNumber", type: "uint256" },
-				{ name: "sender", type: "address" }
+				{ name: "sender", type: "address" },
+				{ name: "offerOwner", type: "address" },
+				{ name: "nftContractAddress", type: "address" }
 			]
 		}
 
@@ -102,6 +104,25 @@ class ExchangeSigner {
 		}
 	}
 
+	async signCancelOrder(nftContractAddress, salt, sender, tokenId) {
+		const latestBlockNumber = await ethers.provider.getBlockNumber()
+		const voucher = { nftContractAddress, sender, salt, blockNumber: latestBlockNumber, tokenId }
+		const domain = await this._signingDomain()
+		const types = {
+			CancelOrder: [
+				{ name: "nftContractAddress", type: "address" },
+				{ name: "sender", type: "address" },
+				{ name: "salt", type: "string" },
+				{ name: "blockNumber", type: "uint256" },
+				{ name: "tokenId", type: "uint256" }
+			]
+		}
+
+		return {
+			signature: await this.signer._signTypedData(domain, types, voucher),
+			voucher
+		}
+	}
 	async _signingDomain() {
 		if (this._domain != null) {
 			return this._domain

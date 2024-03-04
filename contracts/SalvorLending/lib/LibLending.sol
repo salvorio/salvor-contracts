@@ -22,7 +22,9 @@ library LibLending {
         "string salt,",
         "string traits,",
         "uint256 blockNumber,"
-        "address sender"
+        "address borrower,"
+        "address nftContractAddress,",
+        "address lender",
         ")"
     );
 
@@ -42,7 +44,9 @@ library LibLending {
         string salt;
         string traits;
         uint blockNumber;
-        address sender;
+        address borrower;
+        address nftContractAddress;
+        address lender;
     }
 
     function hash(LoanOffer memory loan) internal pure returns (bytes32) {
@@ -68,7 +72,9 @@ library LibLending {
             keccak256(bytes(token.salt)),
             keccak256(bytes(token.traits)),
             token.blockNumber,
-            token.sender
+            token.borrower,
+            token.nftContractAddress,
+            token.lender
         ));
     }
 }

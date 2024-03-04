@@ -10,29 +10,26 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol"
 
 import "../VeArt/IVeArt.sol";
 import "../Royalty/IRoyalty.sol";
+import {IAssetManager} from "./IAssetManager.sol";
 
 /**
  * @title Asset Manager Contract for NFT Transactions
  */
 contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {
-    // Structure to manage royalty information.
+
     struct Royalty {
         bool isEnabled;
         address receiver;
         uint96 percentage;
     }
 
-    // Utilizing EnumerableSetUpgradeable for managing whitelisted platforms.
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     EnumerableSetUpgradeable.AddressSet private _whitelistedPlatforms;
 
-    // Mapping to track bidding wallets.
     mapping(address => uint256) public biddingWallets;
 
-    // EIP-2981 standard interface ID for royalties.
     bytes4 private constant _INTERFACE_ID_EIP2981 = 0x2a55205a;
 
-    // Addresses for veArt.
     address public veArt;
 
     // Mapping to track royalty management.
@@ -53,13 +50,19 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     // Administrator address.
     address public admin;
 
+    // Stores the pending royalty amounts for each collection address.
+    mapping(address => uint256) public pendingRoyalties;
+
+    // Stores the total pending fee amount to be collected by the platform.
+    uint256 public pendingFee;
+
     // events
     event Fund(address indexed user, uint256 amount, bool isExternal);
     event TransferFrom(address indexed user, address indexed to, uint256 amount);
     event Withdraw(address indexed user, uint256 amount, bool isExternal);
-    event RoyaltyReceived(address indexed collection, uint256 indexed tokenId, address _seller, address indexed royaltyReceiver, uint256 amount);
     event FailedTransfer(address indexed receiver, uint256 amount);
     event WithdrawnFailedBalance(uint256 amount);
+    event WithdrawnPendingRoyalty(uint256 amount);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -72,7 +75,6 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
         __ReentrancyGuard_init_unchained();
     }
 
-    // Fallback function to receive Ether.
     receive() external payable {}
 
     /**
@@ -100,11 +102,6 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     // Function to set the VeArt address.
     function setVeArtAddress(address _veArt) external onlyOwner addressIsNotZero(_veArt) {
         veArt = _veArt;
-    }
-
-    // Function to set the default royalty percentage.
-    function setDefaultRoyalty(uint96 _defaultRoyalty) external onlyOwner {
-        defaultRoyalty = _defaultRoyalty;
     }
 
     // Function to enable or disable commission discount.
@@ -146,6 +143,31 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     }
 
     /**
+    * @notice Allows the withdrawal of the pending protocol fee and sends it to the treasury.
+     */
+    function withdrawPendingFee() public {
+        uint256 amount = pendingFee;
+        pendingFee = 0;
+        sendProtocolFeeToTreasure(amount);
+    }
+
+    /**
+    * @notice Allows the withdrawal of pending royalty amounts for a specified NFT contract address.
+    * @param _address The address of the NFT contract.
+    */
+    function withdrawRoyaltyAmount(address _address) external whenNotPaused nonReentrant {
+        uint256 amount = pendingRoyalties[_address];
+
+        require(amount > 0, "no credits to withdraw");
+        require(royalties[_address].receiver != address(0x0), "receiver must be set");
+
+        pendingRoyalties[_address] = 0;
+        (bool successfulWithdraw, ) = payable(royalties[_address].receiver).call{value: amount}("");
+        require(successfulWithdraw, "withdraw failed");
+        emit WithdrawnPendingRoyalty(amount);
+    }
+
+    /**
     * @notice failed transfers are stored in `failedTransferBalance`. In the case of failure, users can withdraw failed balances.
     */
     function withdrawFailedCredits(address _address) external whenNotPaused nonReentrant {
@@ -165,12 +187,13 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     function deposit() external payable whenNotPaused {
         emit Fund(msg.sender, msg.value, false);
         biddingWallets[msg.sender] += msg.value;
+        withdrawPendingFee();
     }
 
     /**
-     * @notice Withdraws a specified amount from msg.sender's bidding wallet.
-     * @param _amount The amount to be withdrawn from the bidding wallet.
-     */
+    * @notice Withdraws a specified amount from msg.sender's bidding wallet.
+    * @param _amount The amount to be withdrawn from the bidding wallet.
+    */
     function withdraw(uint256 _amount) external whenNotPaused nonReentrant {
         uint256 existingBalance = biddingWallets[msg.sender];
         require(existingBalance >= _amount, "Balance is insufficient for a withdrawal");
@@ -178,10 +201,11 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
 
         payable(msg.sender).transfer(_amount);
         emit Withdraw(msg.sender, _amount, false);
+        withdrawPendingFee();
     }
 
     /**
-     * @notice Allows platforms to deposit Ether on behalf of a user into their bidding wallet.
+    * @notice Allows platforms to deposit Ether on behalf of a user into their bidding wallet.
      * @param _user The address of the user for whom the deposit is being made.
      */
     function deposit(address _user) external payable whenNotPaused {
@@ -192,7 +216,7 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     }
 
     /**
-     * @notice Transfers a specified amount from one user's bidding wallet to another.
+    * @notice Transfers a specified amount from one user's bidding wallet to another.
      * @param _from The address from which the amount is being transferred.
      * @param _to The address to which the amount is being transferred.
      * @param _amount The amount of Ether to transfer.
@@ -207,59 +231,111 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     }
 
     /**
-     * @notice Facilitates a marketplace purchase, transferring funds, paying royalties and fees, and transferring NFT ownership.
-     * @param _buyer The address of the buyer in the transaction.
-     * @param _seller The address of the seller in the transaction.
-     * @param _collection The address of the NFT collection.
-     * @param _tokenId The ID of the NFT being transacted.
-     * @param _price The sale price of the NFT.
+     * @notice Processes batch payments for marketplace transactions.
+     * @param payments An array of PaymentInfo structs containing payment details for each transaction.
      */
-    function payMP(address _buyer, address _seller, address _collection, uint256 _tokenId, uint256 _price) external {
+    function payMPBatch(IAssetManager.PaymentInfo[] memory payments) external whenNotPaused {
         require(_isPlatformWhitelisted(msg.sender), "not allowed");
-        require(biddingWallets[_buyer] >= _price, "Insufficient balance");
-
         uint96 _commissionPercentage = protocolFees[msg.sender];
 
-        uint256 fee =  _calculateFee(_seller, _price, _commissionPercentage);
-        sendProtocolFeeToTreasure(fee);
+        uint256 len = payments.length;
+        uint64 i;
+        for (; i < len; ++i) {
+            require(biddingWallets[payments[i].buyer] >= payments[i].price, "Insufficient balance");
+            uint256 fee =  _getPortionOfBid(payments[i].price, _commissionPercentage);
+            uint256 royaltyAmount = _saveRoyaltyAmount(payments[i].collection, payments[i].seller, payments[i].price);
+            require((royaltyAmount + fee) <= payments[i].price, "royalty and fee cannot be higher then main price");
 
-        uint256 royaltyAmount = _sendRoyalty(_collection, _tokenId, _seller, _price);
+            pendingFee += fee;
 
-        require((royaltyAmount + fee) <= _price, "royalty and fee cannot be higher then main price");
-
-        biddingWallets[_buyer] -= _price;
-
-        uint256 transferAmount = (_price - fee - royaltyAmount);
-        biddingWallets[_seller] += transferAmount;
-        emit TransferFrom(_buyer, _seller, transferAmount);
-
-        IERC721Upgradeable(_collection).safeTransferFrom(_seller, _buyer, _tokenId);
+            biddingWallets[payments[i].buyer] -= payments[i].price;
+            uint256 transferAmount = (payments[i].price - fee - royaltyAmount);
+            biddingWallets[payments[i].seller] += transferAmount;
+            emit TransferFrom(payments[i].buyer, payments[i].seller, transferAmount);
+            IERC721Upgradeable(payments[i].collection).safeTransferFrom(payments[i].seller, payments[i].buyer, payments[i].tokenId);
+        }
     }
 
     /**
-     * @notice Calculates and processes a lending fee for a transaction.
-     * @param _from The address from which the fee is being charged.
-     * @param _price The price of the transaction for which the fee is calculated.
-     * @return The amount of the fee processed.
-     */
-    function payLandingFee(address _from, uint256 _price) external returns(uint256) {
+    * @notice Allows batch payment for lending transactions.
+    * @param payments An array of LendingPaymentInfo structs containing payment details.
+    */
+    function payLendingBatch(IAssetManager.LendingPaymentInfo[] memory payments) external whenNotPaused {
         require(_isPlatformWhitelisted(msg.sender), "not allowed");
-
         uint96 _commissionPercentage = protocolFees[msg.sender];
 
-        uint256 fee =  _calculateFee(_from, _price, _commissionPercentage);
-        require(biddingWallets[_from] >= fee, "Insufficient balance");
+        uint256 len = payments.length;
+        uint64 i;
+        for (; i < len; ++i) {
+            require(biddingWallets[payments[i].lender] >= payments[i].amount, "Insufficient balance");
+            uint256 fee =  _getPortionOfBid(payments[i].amount, _commissionPercentage);
 
-        sendProtocolFeeToTreasure(fee);
+            pendingFee += fee;
 
-        biddingWallets[_from] -= fee;
-        emit Withdraw(_from, fee, true);
+            biddingWallets[payments[i].lender] -= payments[i].amount;
+            biddingWallets[payments[i].borrower] += (payments[i].amount - fee);
 
-        return fee;
+            emit TransferFrom(payments[i].lender, payments[i].borrower, (payments[i].amount - fee));
+            if (payments[i].repaymentAmount > 0) {
+                require(biddingWallets[payments[i].borrower] >= payments[i].repaymentAmount, "Insufficient balance");
+                biddingWallets[payments[i].borrower] -= payments[i].repaymentAmount;
+                biddingWallets[payments[i].previousLender] += payments[i].repaymentAmount;
+                emit TransferFrom(payments[i].borrower, payments[i].previousLender, payments[i].repaymentAmount);
+            }
+
+            if (payments[i].collection != address(0x0)) {
+                IERC721Upgradeable(payments[i].collection).safeTransferFrom(payments[i].borrower, msg.sender, payments[i].tokenId);
+            }
+        }
     }
 
     /**
-     * @notice Internal function to send protocol fees to a treasury.
+    * @notice Allows batch repayment for lending transactions.
+    * @param payments An array of LendingPaymentInfo structs containing repayment details.
+    */
+    function lendingRepayBatch(IAssetManager.LendingPaymentInfo[] memory payments) external whenNotPaused {
+        require(_isPlatformWhitelisted(msg.sender), "not allowed");
+        uint256 len = payments.length;
+        uint64 i;
+        for (; i < len; ++i) {
+            require(biddingWallets[payments[i].borrower] >= payments[i].amount, "Insufficient balance");
+            emit TransferFrom(payments[i].borrower, payments[i].lender, payments[i].amount);
+            biddingWallets[payments[i].borrower] -= payments[i].amount;
+            biddingWallets[payments[i].lender] += payments[i].amount;
+            IERC721Upgradeable(payments[i].collection).safeTransferFrom(msg.sender, payments[i].borrower, payments[i].tokenId);
+        }
+    }
+
+    /**
+	* @notice Processes the payment for a Dutch auction.
+    * @param _nftContractAddress The address of the NFT contract.
+    * @param _tokenId The token ID of the NFT being auctioned.
+    * @param bidder The address of the bidder.
+    * @param lender The address of the lender.
+    * @param bid The amount of the bid.
+    * @param endPrice The final price of the auction.
+    */
+    function dutchPay(address _nftContractAddress, uint256 _tokenId, address bidder, address lender, uint256 bid, uint256 endPrice) external whenNotPaused nonReentrant {
+        require(_isPlatformWhitelisted(msg.sender), "not allowed");
+        require(biddingWallets[bidder] >= bid, "Insufficient balance");
+
+        IERC721Upgradeable(_nftContractAddress).safeTransferFrom(msg.sender, bidder, _tokenId);
+
+
+        uint256 fee = _getPortionOfBid(bid - endPrice, 5000);
+
+        pendingFee += fee;
+
+        uint256 transferredAmount = bid - fee;
+
+        emit TransferFrom(bidder, lender, transferredAmount);
+
+        biddingWallets[bidder] -= transferredAmount;
+        biddingWallets[lender] += transferredAmount;
+    }
+
+    /**
+     * @notice Sends the collected protocol fee to the treasury.
      * @param _fee The amount of the fee to be sent.
      */
     function sendProtocolFeeToTreasure(uint256 _fee) internal {
@@ -270,11 +346,11 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     }
 
     /**
-     * @notice Transfers an NFT from one address to another.
-     * @param _from The address from which the NFT is being transferred.
-     * @param _to The address to which the NFT is being transferred.
-     * @param _collection The address of the NFT collection.
-     * @param _tokenId The ID of the NFT being transferred.
+    * @notice Transfers an NFT from one address to another.
+     * @param _from The address of the current owner of the NFT.
+     * @param _to The address to which the NFT will be transferred.
+     * @param _collection The address of the NFT collection contract.
+     * @param _tokenId The token ID of the NFT to be transferred.
      */
     function nftTransferFrom(address _from, address _to, address _collection, uint256 _tokenId) external {
         require(_isPlatformWhitelisted(msg.sender), "not allowed");
@@ -283,68 +359,36 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     }
 
     /**
-     * @notice Allows batch transfer of multiple NFTs.
-     * @param _addresses Array of NFT collection addresses.
-     * @param _tokenIds Array of NFT token IDs corresponding to the addresses.
-     * @param _to The destination address for the NFTs.
+     * @notice Transfers multiple NFTs from the caller to a specified address.
+     * @param _addresses An array of addresses of the NFT contracts.
+     * @param _tokenIds An array of token IDs corresponding to the NFTs to be transferred.
+     * @param _to The address to which the NFTs will be transferred.
      */
     function batchTransfer(address[] calldata _addresses, uint256[] calldata _tokenIds, address _to) external {
         uint256 len = _addresses.length;
         require(len <= 50, "exceeded the limits");
+        require(len == _tokenIds.length, "addresses and tokenIds inputs does not match");
         for (uint64 i; i < len; ++i) {
             IERC721Upgradeable(_addresses[i]).safeTransferFrom(msg.sender, _to, _tokenIds[i]);
         }
     }
 
     /**
-     * @notice Calculates the fee based on the commission percentage, potentially applying a discount based on the user's VeArt balance.
-     * @param _user The address of the user for whom the fee is being calculated.
-     * @param _price The price of the transaction.
-     * @param _commissionPercentage The initial commission percentage.
-     * @return The calculated fee.
-     */
-    function _calculateFee(address _user, uint256 _price, uint96 _commissionPercentage) internal view returns (uint256) {
-        if (commissionDiscountEnabled) {
-            uint256 userBalance = IVeArt(veArt).balanceOf(_user);
-            uint256 totalSupply = IVeArt(veArt).totalSupply();
-
-            uint256 userShare =  10000 * userBalance / totalSupply;
-            if (userShare >= 100) {
-                _commissionPercentage = 0;
-            } else if (userShare >= 10) {
-                _commissionPercentage -= uint96(_getPortionOfBid(_commissionPercentage, ((userShare - 10) * 6000 / 90) + 1000));
-            }
-        }
-        return _getPortionOfBid(_price, _commissionPercentage);
-    }
-
-    /**
-     * @notice Calculates and sends the royalty payment for an NFT transaction.
+     * @notice Calculates and saves the royalty amount for a given sale, if applicable.
      * @param _nftContractAddress The address of the NFT contract.
-     * @param _tokenId The ID of the NFT.
-     * @param _seller The address of the seller.
-     * @param price The price of the NFT.
-     * @return The amount of royalty paid.
+     * @param _seller The address of the seller of the NFT.
+     * @param price The sale price of the NFT.
+     * @return uint256 The royalty amount to be saved.
      */
-    function _sendRoyalty(address _nftContractAddress, uint256 _tokenId, address _seller, uint256 price) internal returns (uint256) {
+    function _saveRoyaltyAmount(address _nftContractAddress, address _seller, uint256 price) internal returns (uint256) {
         Royalty memory royalty = royalties[_nftContractAddress];
         if (royalty.isEnabled) {
             address royaltyReceiver = royalty.receiver;
             uint256 royaltyAmount = _getPortionOfBid(price, royalty.percentage);
             if (royaltyReceiver != _seller && royaltyReceiver != address(0)) {
-                emit RoyaltyReceived(_nftContractAddress, _tokenId, _seller, royaltyReceiver, royaltyAmount);
-                _safeTransferTo(payable(royaltyReceiver), royaltyAmount);
+                pendingRoyalties[_nftContractAddress] += royaltyAmount;
+                // _safeTransferTo(payable(royaltyReceiver), royaltyAmount);
                 return royaltyAmount;
-            }
-        } else {
-            if (IERC721Upgradeable(_nftContractAddress).supportsInterface(_INTERFACE_ID_EIP2981) && defaultRoyalty > 0) {
-                uint256 royaltyAmount = _getPortionOfBid(price, defaultRoyalty);
-                (address royaltyReceiver,) = IRoyalty(_nftContractAddress).royaltyInfo(_tokenId, price);
-                if (royaltyReceiver != _seller && royaltyReceiver != address(0)) {
-                    emit RoyaltyReceived(_nftContractAddress, _tokenId, _seller, royaltyReceiver, royaltyAmount);
-                    _safeTransferTo(payable(royaltyReceiver), royaltyAmount);
-                    return royaltyAmount;
-                }
             }
         }
 
@@ -352,10 +396,10 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
     }
 
     /**
-     * @notice Safely transfers Ether to a recipient and handles failed transfers.
-     * @param _recipient The address of the recipient.
-     * @param _amount The amount of Ether to be transferred.
-     */
+    * @notice Attempts to safely transfer Ether to a recipient. If the transfer fails, the amount is recorded for later withdrawal.
+    * @param _recipient The address of the recipient.
+    * @param _amount The amount of Ether to transfer.
+    */
     function _safeTransferTo(address _recipient, uint256 _amount) internal {
         (bool success, ) = payable(_recipient).call{value: _amount, gas: 20000}("");
         // if it fails, it updates their credit balance so they can withdraw later
@@ -365,10 +409,6 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
         }
     }
 
-    /**
-     * @notice Returns the contract's Ether balance.
-     * @return The Ether balance of the contract.
-     */
     function balance() external view returns (uint) {
         return address(this).balance;
     }
@@ -381,12 +421,6 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
         return _whitelistedPlatforms.contains(_platform);
     }
 
-    /**
-     * @notice Calculates a portion of a bid based on a given percentage.
-     * @param _totalBid The total bid amount.
-     * @param _percentage The percentage to calculate from the total bid.
-     * @return The calculated portion of the bid.
-     */
     function _getPortionOfBid(uint256 _totalBid, uint256 _percentage) internal pure returns (uint256) { return (_totalBid * (_percentage)) / 10000; }
 
     /**

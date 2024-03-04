@@ -44,7 +44,19 @@ library LibOrder {
         "string salt,",
         "string traits,",
         "uint256 blockNumber,"
-        "address sender"
+        "address sender,",
+        "address offerOwner,",
+        "address nftContractAddress"
+        ")"
+    );
+
+    bytes constant cancelOrderTypeString = abi.encodePacked(
+        "CancelOrder(",
+        "address nftContractAddress,",
+        "address sender,",
+        "string salt,",
+        "uint256 blockNumber,",
+        "uint256 tokenId",
         ")"
     );
 
@@ -56,6 +68,8 @@ library LibOrder {
 
     bytes32 constant TOKEN_TYPEHASH = keccak256(tokenTypeString);
 
+    bytes32 constant CANCEL_ORDER_TYPEHASH = keccak256(cancelOrderTypeString);
+
     struct Order {
         address nftContractAddress; // nft contract address
         string salt; // uuid to provide uniquness
@@ -66,28 +80,38 @@ library LibOrder {
     }
 
     struct BatchOrder {
-        string salt; // uuid to provide uniquness
+        string salt; // uuid to provide uniqness
         Order[] orders; // When the nft is sold then the price will be split to the shareholders.
     }
 
     struct Offer {
-        address nftContractAddress; // Address of the NFT contract.
-        string salt; // Unique identifier to ensure the offer's uniqueness.
-        string traits; // Specific traits or characteristics of the NFT, if applicable.
-        uint tokenId; // The token ID of the NFT within the contract.
-        uint bid; // The amount bid for the NFT.
-        uint duration; // Duration of the offer in blocks or time units.
-        uint size; // The size or quantity of the offer.
-        uint startedAt; // Timestamp or block number indicating when the offer started.
-        bool isCollectionOffer; // Indicates if the offer is for an entire collection.
+        address nftContractAddress;
+        string salt;
+        string traits;
+        uint tokenId;
+        uint bid;
+        uint duration;
+        uint size;
+        uint startedAt;
+        bool isCollectionOffer;
     }
 
     struct Token {
-        uint256 tokenId; // The token ID of the NFT.
-        string salt; // Unique identifier associated with the token.
-        string traits; // Specific traits or characteristics of the NFT.
-        uint blockNumber; // The block number when the token was recorded or transferred.
-        address sender; // The address that sent or created the token.
+        uint256 tokenId;
+        string salt;
+        string traits;
+        uint blockNumber;
+        address sender;
+        address offerOwner;
+        address nftContractAddress;
+    }
+
+    struct CancelOrder {
+        address nftContractAddress;
+        address sender;
+        string salt;
+        uint blockNumber;
+        uint256 tokenId;
     }
 
     function hash(BatchOrder memory batchOrder) internal pure returns (bytes32) {
@@ -96,22 +120,22 @@ library LibOrder {
             orderHashes[i] = _hashOrderItem(batchOrder.orders[i]);
         }
         return keccak256(abi.encode(
-                BATCH_ORDER_TYPEHASH,
-                keccak256(bytes(batchOrder.salt)),
-                keccak256(abi.encodePacked(orderHashes))
-            ));
+            BATCH_ORDER_TYPEHASH,
+            keccak256(bytes(batchOrder.salt)),
+            keccak256(abi.encodePacked(orderHashes))
+        ));
     }
 
     function _hashOrderItem(Order memory order) internal pure returns (bytes32) {
         return keccak256(abi.encode(
-                ORDER_TYPEHASH,
-                order.nftContractAddress,
-                keccak256(bytes(order.salt)),
-                order.tokenId,
-                order.price,
-                order.duration,
-                order.startedAt
-            ));
+            ORDER_TYPEHASH,
+            order.nftContractAddress,
+            keccak256(bytes(order.salt)),
+            order.tokenId,
+            order.price,
+            order.duration,
+            order.startedAt
+        ));
     }
 
     function hashKey(Order memory order) internal pure returns (bytes32) {
@@ -144,7 +168,20 @@ library LibOrder {
             keccak256(bytes(token.salt)),
             keccak256(bytes(token.traits)),
             token.blockNumber,
-            token.sender
+            token.sender,
+            token.offerOwner,
+            token.nftContractAddress
+        ));
+    }
+
+    function hashCancelOrder(CancelOrder memory cancelOrder) internal pure returns (bytes32) {
+        return keccak256(abi.encode(
+            CANCEL_ORDER_TYPEHASH,
+            cancelOrder.nftContractAddress,
+            cancelOrder.sender,
+            keccak256(bytes(cancelOrder.salt)),
+            cancelOrder.blockNumber,
+            cancelOrder.tokenId
         ));
     }
 }

@@ -75,9 +75,9 @@ class ExchangeSigner {
 		}
 	}
 
-	async signToken(tokenId, salt, traits, sender) {
+	async signToken(tokenId, salt, traits, borrower, nftContractAddress, lender) {
 		const latestBlockNumber = await ethers.provider.getBlockNumber()
-		const voucher = { tokenId, salt, traits, blockNumber: latestBlockNumber, sender }
+		const voucher = { tokenId, salt, traits, blockNumber: latestBlockNumber, borrower, nftContractAddress, lender }
 		const domain = await this._signingDomain()
 		const types = {
 			Token: [
@@ -85,7 +85,9 @@ class ExchangeSigner {
 				{ name: "salt", type: "string" },
 				{ name: "traits", type: "string" },
 				{ name: "blockNumber", type: "uint256" },
-				{ name: "sender", type: "address" }
+				{ name: "borrower", type: "address" },
+				{ name: "nftContractAddress", type: "address" },
+				{ name: "lender", type: "address" }
 			]
 		}
 

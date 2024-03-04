@@ -81,12 +81,6 @@ describe("Exchange", function () {
 		await expect(this.exchange.connect(this.owner).setValidator("0x0000000000000000000000000000000000000000")).to.be.revertedWith("Given address must be a non-zero address")
 	})
 
-	it("it should returns the balance of contract", async function () {
-		const balance = await this.exchange.balance()
-		const expectedBalance = ethers.utils.formatEther(ethers.utils.parseEther("0"))
-		expect(ethers.utils.formatEther(balance)).to.be.equal(expectedBalance)
-	})
-
 	it("pause should set paused true and unpause should set false", async function () {
 		expect(await this.exchange.paused()).to.be.equal(false)
 		await this.exchange.pause()
@@ -113,16 +107,20 @@ describe("Exchange", function () {
 	it("it should cancel listing", async function () {
 		const exchangeSigner = new ExchangeSigner({ contract: this.exchange, signer: this.seller })
 		const { voucher, signature } = await exchangeSigner.createVoucher(this.nftCollectible.address, 1, ethers.utils.parseEther("1"))
+		const exchangeSigner3 = new ExchangeSigner({ contract: this.exchange, signer: this.signers[4] })
+		const { voucher: cancelOrderVoucher, signature: cancelOrderSignature } = await exchangeSigner3.signCancelOrder(this.nftCollectible.address, voucher.salt, this.seller.address, 1)
+		await this.exchange.setBlockRange(40)
+
 		await this.exchange.pause()
-		await expect(this.exchange.batchCancelOrder([voucher], [signature], [0])).to.be.revertedWith("Pausable: paused")
+		await expect(this.exchange.batchCancelOrder([voucher], [signature], [0], [cancelOrderVoucher], [cancelOrderSignature])).to.be.revertedWith("Pausable: paused")
 		await this.exchange.unpause()
 
-		await expect(this.exchange.connect(this.signers[3]).batchCancelOrder([voucher], [signature], [0])).to.be.revertedWith("only signer")
+		await expect(this.exchange.connect(this.signers[3]).batchCancelOrder([voucher], [signature], [0], [cancelOrderVoucher], [cancelOrderSignature])).to.be.revertedWith("only signer")
 
-		const tx = await this.exchange.connect(this.seller).batchCancelOrder([voucher], [signature], [0])
+		const tx = await this.exchange.connect(this.seller).batchCancelOrder([voucher], [signature], [0], [cancelOrderVoucher], [cancelOrderSignature])
 		const receipt = await tx.wait()
 		expect(receipt.events.filter(event => event.event === "Cancel").length).to.be.equal(1)
-		await expect(this.exchange.connect(this.seller).batchCancelOrder([voucher], [signature], [0])).to.be.revertedWith("order has already redeemed or cancelled")
+		await expect(this.exchange.connect(this.seller).batchCancelOrder([voucher], [signature], [0], [cancelOrderVoucher], [cancelOrderSignature])).to.be.revertedWith("order has already redeemed or cancelled")
 	})
 
 	it("it should buy", async function () {
@@ -131,8 +129,11 @@ describe("Exchange", function () {
 		await this.exchange.pause()
 		await expect(this.exchange.connect(this.buyer).batchBuy([voucher], [signature], [0])).to.be.revertedWith("Pausable: paused")
 		await this.exchange.unpause()
+		const exchangeSigner3 = new ExchangeSigner({ contract: this.exchange, signer: this.signers[4] })
 
-		await this.exchange.connect(this.seller).batchCancelOrder([voucher], [signature], [0])
+		const { voucher: cancelOrderVoucher, signature: cancelOrderSignature } = await exchangeSigner3.signCancelOrder(this.nftCollectible.address, voucher.salt, this.seller.address, 1)
+		await this.exchange.setBlockRange(40)
+		await this.exchange.connect(this.seller).batchCancelOrder([voucher], [signature], [0], [cancelOrderVoucher], [cancelOrderSignature])
 		// const blockNumBefore = await ethers.provider.getBlockNumber();
 		// const blockBefore = await ethers.provider.getBlock(blockNumBefore);
 		// const timestampBefore = blockBefore.timestamp;
@@ -169,7 +170,7 @@ describe("Exchange", function () {
 		const { voucher, signature } = await exchangeSigner.createOfferVoucher(this.nftCollectible.address, 1, ethers.utils.parseEther("1"))
 
 		const exchangeSigner2 = new ExchangeSigner({ contract: this.exchange, signer: this.signers[4] })
-		let tokenResult = await exchangeSigner2.signToken(1, voucher.salt + '1', voucher.traits, this.seller.address)
+		let tokenResult = await exchangeSigner2.signToken(1, voucher.salt + '1', voucher.traits, this.seller.address, this.buyer.address, this.nftCollectible.address)
 
 		await this.exchange.pause()
 		await expect(this.exchange.acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("Pausable: paused")
@@ -178,31 +179,31 @@ describe("Exchange", function () {
 
 		await expect(this.exchange.connect(this.signers[3]).acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("salt does not match")
 
-		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address)
+		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address, this.buyer.address, this.nftCollectible.address)
 
 		await expect(this.exchange.connect(this.buyer).acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("signer cannot redeem own coupon")
 
 		const { voucher: voucher1, signature: signature1 } = await exchangeSigner.createOfferVoucher(this.nftCollectible.address, 1, ethers.utils.parseEther("0"))
-		tokenResult = await exchangeSigner2.signToken(1, voucher1.salt, voucher1.traits, this.seller.address)
+		tokenResult = await exchangeSigner2.signToken(1, voucher1.salt, voucher1.traits, this.seller.address, this.buyer.address, this.nftCollectible.address)
 		await expect(this.exchange.connect(this.seller).acceptOfferBatch([voucher1], [signature1], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("non existent offer")
 
-		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address)
+		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address, this.buyer.address, this.nftCollectible.address)
 		await expect(this.exchange.connect(this.seller).acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [signature])).to.be.revertedWith("token signature is not valid")
 
-		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.signers[3].address)
+		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.signers[3].address, this.buyer.address, this.nftCollectible.address)
 		await expect(this.exchange.connect(this.seller).acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("token signature does not belong to msg.sender")
 
-		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address)
+		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address, this.buyer.address, this.nftCollectible.address)
 		await expect(this.exchange.connect(this.seller).acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("token signature has been expired")
 
 		await this.exchange.setBlockRange(40)
-		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, "test_trait", this.seller.address)
+		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, "test_trait", this.seller.address, this.buyer.address, this.nftCollectible.address)
 		await expect(this.exchange.connect(this.seller).acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("traits does not match")
 
 
 		await this.nftCollectible.setApprovalForAll(this.assetManager.address, true);
 		await this.assetManager.connect(this.buyer)['deposit()']({ value: ethers.utils.parseEther("1") })
-		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address)
+		tokenResult = await exchangeSigner2.signToken(1, voucher.salt, voucher.traits, this.seller.address, this.buyer.address, this.nftCollectible.address)
 		const tx3 = await this.exchange.connect(this.seller).acceptOfferBatch([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
 		const receipt3 = await tx3.wait()
 		expect(receipt3.events.filter(event => event.event === "AcceptOffer").length).to.be.equal(1)
