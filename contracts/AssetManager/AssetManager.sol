@@ -104,11 +104,6 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
         veArt = _veArt;
     }
 
-    // Function to enable or disable commission discount.
-    function setCommissionDiscount(bool _isEnabled) external onlyOwner {
-        commissionDiscountEnabled = _isEnabled;
-    }
-
     // Function to set or update the royalty configuration for a collection.
     function setCollectionRoyalty(address _address, address _receiver, uint96 _percentage, bool _isEnabled) external {
         require(msg.sender == owner() || msg.sender == admin, "not authorized");
@@ -304,6 +299,20 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
             biddingWallets[payments[i].lender] += payments[i].amount;
             IERC721Upgradeable(payments[i].collection).safeTransferFrom(msg.sender, payments[i].borrower, payments[i].tokenId);
         }
+    }
+
+    function payERC20Lending(address lender, address borrower, uint256 amount) external whenNotPaused {
+        require(_isPlatformWhitelisted(msg.sender), "not allowed");
+        uint96 _commissionPercentage = protocolFees[msg.sender];
+        require(biddingWallets[lender] >= amount, "Insufficient balance");
+        uint256 fee =  _getPortionOfBid(amount, _commissionPercentage);
+
+        pendingFee += fee;
+
+        biddingWallets[lender] -= amount;
+        biddingWallets[borrower] += (amount - fee);
+
+        emit TransferFrom(lender, borrower, (amount - fee));
     }
 
     /**

@@ -26,4 +26,5 @@ interface IAssetManager {
 	function payMPBatch(PaymentInfo[] memory _payments) external;
 	function transferFrom(address _from, address _to, uint256 _amount) external;
 	function dutchPay(address _nftContractAddress, uint256 _tokenId, address bidder, address lender, uint256 bid, uint256 endPrice) external;
+	function payERC20Lending(address _lender, address _borrower, uint256 _amount) external;
 }
