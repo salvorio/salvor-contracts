@@ -3,7 +3,7 @@ const { expect } = require("chai")
 const LendingSigner = require("../libs/LendingErc20Signer")
 const totalToken = "10000000000000000000" // 100
 
-describe.only("Lending Erc20", function () {
+describe("Lending Erc20", function () {
 	before(async function () {
 		// ABIs
 		this.lendingCF = await ethers.getContractFactory("SalvorLendingERC20")

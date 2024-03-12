@@ -50,6 +50,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     // Defines the range of blocks within which certain operations or validations must be performed
     uint256 public blockRange;
 
+    // Mapping to track which ERC20 token addresses are allowed as collateral for loans.
     mapping(address => bool) public allowedAssets;
 
     // events
@@ -92,6 +93,11 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         blockRange = _blockRange;
     }
 
+    /**
+    * @notice Allows the contract owner to set whether an ERC20 token address is allowed as collateral.
+    * @param asset The address of the ERC20 token to be set as allowed or disallowed.
+    * @param isActive A boolean indicating whether the asset is allowed (true) or not (false).
+    */
     function setAllowedAsset(address asset, bool isActive) external onlyOwner {
         allowedAssets[asset] = isActive;
     }
@@ -130,7 +136,11 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     }
 
     /**
-    * @notice Allows borrowing against an NFT based on a loan offer. This function is internal and ensures the loan has not already been taken and not been cancelled.
+    * @notice Allows a borrower to take out a loan by providing a valid loan offer, the corresponding signatures, and the token details.
+    * @param _loanOffer The loan offer struct containing the loan terms.
+    * @param signature The signature of the lender verifying the loan offer.
+    * @param token The token struct containing the details of the ERC20 token used for the loan.
+    * @param tokenSignature The signature of the borrower verifying the token details.
     */
     function borrow(LibLendingERC20.LoanOffer memory _loanOffer, bytes memory signature, LibLendingERC20.Token memory token, bytes memory tokenSignature)
         nonReentrant
@@ -156,7 +166,10 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     }
 
     /**
-    * @notice Repays the loan for a specific NFT and returns the NFT to the borrower. This function is internal.
+    * @notice Allows a borrower to repay an active loan, returning the collateral and settling the debt.
+    * @param _collateralizedAsset The address of the ERC20 token used as collateral for the loan.
+    * @param _lender The address of the lender.
+    * @param _salt A unique identifier for the loan, used to differentiate between loans with the same borrower, lender, and collateral.
     */
     function repay(address _collateralizedAsset, address _lender, string memory _salt) whenNotPaused nonReentrant public {
         Loan memory loan = loans[msg.sender][_collateralizedAsset][_lender][_salt];
@@ -172,7 +185,10 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     }
 
     /**
-    * @notice Repays the loan for a specific NFT and returns the NFT to the borrower. This function is internal.
+	* @notice Allows a borrower to repay an active loan using ETH, which is then converted to the ERC20 token used as collateral.
+    * @param _collateralizedAsset The address of the ERC20 token used as collateral for the loan.
+    * @param _lender The address of the lender.
+    * @param _salt A unique identifier for the loan, used to differentiate between loans with the same borrower, lender, and collateral.
     */
     function repayETH(address _collateralizedAsset, address _lender, string memory _salt) nonReentrant external payable {
         IAssetManager(assetManager).deposit{ value: msg.value }(msg.sender);
@@ -180,7 +196,10 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     }
 
     /**
-    * @notice Clears the debt associated with a specific NFT after the loan period has finished. This function is internal.
+    * @notice Allows a lender to claim the collateral of a loan if the borrower has not repaid the loan after the loan period has ended.
+    * @param _collateralizedAsset The address of the ERC20 token used as collateral for the loan.
+    * @param _borrower The address of the borrower.
+    * @param _salt A unique identifier for the loan, used to differentiate between loans with the same borrower, lender, and collateral.
     */
     function clearDebt(address _collateralizedAsset, address _borrower, string memory _salt) whenNotPaused nonReentrant external {
         Loan memory loan = loans[_borrower][_collateralizedAsset][msg.sender][_salt];
@@ -195,10 +214,12 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     }
 
     /**
-    * @notice Validates a loan offer and corresponding token. This internal function ensures the loan offer and token meet various criteria including active pool, valid token signature, matching salts, sender authenticity, and signature expiry.
-    * @param _loanOffer The loan offer to validate.
-    * @param _token The token associated with the loan offer.
-    * @param _tokenSignature The signature of the token.
+    * @notice Validates a loan offer and the associated token details provided by the borrower.
+    * @dev This function checks various conditions such as the allowed assets, loan and token amounts, loan duration, and signatures.
+    * @param _loanOffer The loan offer struct containing the loan terms.
+    * @param signature The signature of the lender verifying the loan offer.
+    * @param _token The token struct containing the details of the ERC20 token used for the loan.
+    * @param _tokenSignature The signature of the borrower verifying the token details.
     */
     function validateLoanOffer(LibLendingERC20.LoanOffer memory _loanOffer, bytes memory signature, LibLendingERC20.Token memory _token, bytes memory _tokenSignature) internal {
         require(allowedAssets[_loanOffer.collateralizedAsset], "collateralized asset is not allowed");
@@ -221,6 +242,14 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         return LibLendingERC20.hash(_loanOffer);
     }
 
+    /**
+    * @notice Calculates the repayment amount for a loan based on the elapsed time and the agreed interest rate.
+    * @param _borrower The address of the borrower.
+    * @param _collateralizedAsset The address of the ERC20 token used as collateral for the loan.
+    * @param _lender The address of the lender.
+    * @param _salt A unique identifier for the loan, used to differentiate between loans with the same borrower, lender, and collateral.
+    * @return The total repayment amount, including the principal and accrued interest.
+    */
     function calculateRepayment(address _borrower, address _collateralizedAsset, address _lender, string memory _salt) public view returns (uint256) {
         Loan memory loan = loans[_borrower][_collateralizedAsset][_lender][_salt];
 
