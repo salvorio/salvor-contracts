@@ -238,6 +238,11 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         require(_loanOffer.amount >= sizes[hash], "size is filled");
     }
 
+    /**
+    * @notice Generates a hash for a loan offer using the library's hashing function.
+    * @param _loanOffer The loan offer struct containing the loan terms.
+    * @return The hash of the loan offer.
+    */
     function hashOrder(LibLendingERC20.LoanOffer memory _loanOffer) external pure returns(bytes32) {
         return LibLendingERC20.hash(_loanOffer);
     }
