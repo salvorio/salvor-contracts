@@ -139,6 +139,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     */
     function borrow(LibLendingERC20.LoanOffer memory _loanOffer, bytes memory signature, LibLendingERC20.Token memory token, bytes memory tokenSignature)
         nonReentrant
+        whenNotPaused
         external
     {
         Loan storage loan = loans[msg.sender][_loanOffer.collateralizedAsset][_loanOffer.lender][_loanOffer.salt];
@@ -162,7 +163,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     /**
     * @notice Repays the loan for a specific NFT and returns the NFT to the borrower. This function is internal.
     */
-    function repay(address _collateralizedAsset, address _lender, string memory _salt) nonReentrant public {
+    function repay(address _collateralizedAsset, address _lender, string memory _salt) whenNotPaused nonReentrant public {
         Loan memory loan = loans[msg.sender][_collateralizedAsset][_lender][_salt];
 
         require(loan.startedAt > 0, "there is not any active loan");
@@ -186,7 +187,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     /**
     * @notice Clears the debt associated with a specific NFT after the loan period has finished. This function is internal.
     */
-    function clearDebt(address _collateralizedAsset, address _borrower, string memory _salt) nonReentrant external {
+    function clearDebt(address _collateralizedAsset, address _borrower, string memory _salt) whenNotPaused nonReentrant external {
         Loan memory loan = loans[_borrower][_collateralizedAsset][msg.sender][_salt];
 
         require(loan.startedAt > 0, "there is not any active loan");
@@ -207,7 +208,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     function validateLoanOffer(LibLendingERC20.LoanOffer memory _loanOffer, bytes memory signature, LibLendingERC20.Token memory _token, bytes memory _tokenSignature) internal {
         require(allowedAssets[_loanOffer.collateralizedAsset], "collateralized asset is not allowed");
         require(_loanOffer.amount >= 1 ether, "insufficient lent amount");
-        require(_loanOffer.duration >= 120, "at least a day");
+        require(_loanOffer.duration >= 86400, "at least a day");
         require(_token.amount >= 1 ether, "insufficient amount requested");
         bytes32 hash = LibLendingERC20.hash(_loanOffer);
         require(hash == _token.orderHash, "hash does not match");
@@ -228,8 +229,8 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     function calculateRepayment(address _borrower, address _collateralizedAsset, address _lender, string memory _salt) public view returns (uint256) {
         Loan memory loan = loans[_borrower][_collateralizedAsset][_lender][_salt];
 
-        uint256 elapsedDay = ((block.timestamp - loan.startedAt) / 120) + 1;
-        uint256 totalDays = loan.duration / 120;
+        uint256 elapsedDay = ((block.timestamp - loan.startedAt) / 86400) + 1;
+        uint256 totalDays = loan.duration / 86400;
         if (totalDays <= elapsedDay) {
             return loan.lentAmount + ((loan.lentAmount * loan.rate) / 1 ether);
         } else {

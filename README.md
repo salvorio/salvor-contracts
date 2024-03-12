@@ -8,10 +8,11 @@ This repository contains all contracts for Salvor.
 * SalvorLending
 * SalvorExchange
 * AssetManager
+* SalvorLendingERC20
 
 # Docs
 
-For technical and functional requirements and more detailed information about the VeArt, AssetManager, SalvorExchange and SalvorLending contracts, please refer to the documentation for the contracts, which can be accessed via the link provided below.
+For technical and functional requirements and more detailed information about the VeArt, AssetManager, SalvorExchange, SalvorLendingERC20 and SalvorLending contracts, please refer to the documentation for the contracts, which can be accessed via the link provided below.
 
 [**VeART Documantaion**](https://docs.google.com/document/d/1wNrZ8olOkYNMOCRqIa-LwWDA3EgKFnE_ryGoomo0Xlw)
 
@@ -21,6 +22,7 @@ For technical and functional requirements and more detailed information about th
 
 [**Salvor Lending**](https://docs.google.com/document/d/1zXyk2OYSyE8Aci3b8yZ6IkQBIUyYKV9N2cmEXakoEgA/edit#heading=h.ehvdfv9zxvvd)
 
+[**Salvor Lending ERC20**](https://docs.google.com/document/d/1x0C0ZsvsaQZhaQuOoBdc9xorgaBD9ofNVnT6bmgKRWA/edit#heading=h.ehvdfv9zxvvd)
 
 ![](https://cdn.salvor.io/site/images/l_schema.png)
 
@@ -76,6 +78,7 @@ npx hardhat verify --network fuji ASSET_MANAGER_CONTRACT_ADDRESS
 npx hardhat verify --network fuji GOVARNANCE_TOKEN_CONTRACT_ADDRESS
 npx hardhat verify --network fuji EXCHANGE_CONTRACT_ADDRESS
 npx hardhat verify --network fuji LENDING_CONTRACT_ADDRESS
+npx hardhat verify --network fuji LENDING_ERC20_CONTRACT_ADDRESS
 npx hardhat verify --network fuji VEART_CONTRACT_ADDRESS
 ```
 
@@ -101,8 +104,6 @@ npx hardhat coverage
 ### NOTE:
 **ERC721Dummy.sol** and **SalvorMini** is only for testing purpose. No real use on production.
 
-**CancelLoans** in **SalvorLending.sol** and  **batchCancelOffer** in **SalvorExchange.sol** are not used anymore.
-
 ### The contracts below are example contracts that have been deployed on the Fuji network. They should be used as references for understanding the functionality of the contracts on the Fuji network. However, it is important to note that they are not meant to be used in production and may not have the same level of security and reliability as the contracts deployed on a live network.
 
 [VeArt](https://testnet.snowtrace.io/address/0xc6CD5ed983729DEa05F2d2bD7E99DC6422bb2912)
@@ -112,6 +113,8 @@ npx hardhat coverage
 [Exchange](https://testnet.snowtrace.io/address/0xc2ab35b30127cfac1ea55228ddabfdc6040a3cec)
 
 [Lending](https://testnet.snowtrace.io/address/0xff971acb9e9a8dc8951cc6a184103cad85e3f1ea)
+
+[LendingERC20](https://testnet.snowtrace.io/address/0xd05606a1917bc6ebe0068acda9d08b6f0d148e61)
 
 [GovernanceToken](https://testnet.snowtrace.io/address/0xC3d64c244D53e743f6CFb72A342DCBF89D267187)
 
