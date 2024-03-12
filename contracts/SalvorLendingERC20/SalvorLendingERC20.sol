@@ -44,10 +44,6 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     // Address of the validator, responsible for certain administrative functions or validations within the contract
     address public validator;
 
-    // TODO must be removed
-    // Address of the admin, holding administrative privileges over the contract
-    address public admin;
-
     // Address of the asset manager, responsible for managing the assets within the lending pools
     address public assetManager;
 
