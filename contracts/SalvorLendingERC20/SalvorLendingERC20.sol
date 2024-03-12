@@ -30,7 +30,6 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         uint256 duration;
         uint256 rate;
         uint256 startedAt;
-        bool isConsumed; // TODO must be removed
     }
 
     string private constant SIGNING_DOMAIN = "SalvorLendingERC20";
