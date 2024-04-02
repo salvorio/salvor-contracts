@@ -111,8 +111,6 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
         _disableInitializers();
     }
 
-    receive() external payable {}
-
     function initialize() public initializer {
         __EIP712_init_unchained(SIGNING_DOMAIN, SIGNATURE_VERSION);
         __Ownable_init_unchained();
@@ -450,7 +448,6 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     */
     function extend(LibLending.LoanOffer memory _loanOffer, bytes memory signature, LibLending.Token memory token, bytes memory tokenSignature)
     internal
-    isNotCancelled(LibLending.hashKey(_loanOffer))
     returns (IAssetManager.LendingPaymentInfo memory)
     {
         Loan memory item = items[_loanOffer.nftContractAddress][token.tokenId];
@@ -475,7 +472,7 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
 
         uint256 endPrice = _loanOffer.amount + ((_loanOffer.amount * lendingPool.rate) / 1 ether);
 
-        setDutchAuction(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.amount*3, endPrice, block.timestamp + lendingPool.duration);
+        setDutchAuction(_loanOffer.nftContractAddress, token.tokenId, endPrice*3, endPrice, block.timestamp + lendingPool.duration);
 
         return IAssetManager.LendingPaymentInfo({
             lender: lender,
@@ -497,7 +494,6 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     */
     function borrow(LibLending.LoanOffer memory _loanOffer, bytes memory signature, LibLending.Token memory token, bytes memory tokenSignature)
     internal
-    isNotCancelled(LibLending.hashKey(_loanOffer))
     returns (IAssetManager.LendingPaymentInfo memory)
     {
         require(items[_loanOffer.nftContractAddress][token.tokenId].startedAt == 0, "has been already borrowed");
@@ -515,7 +511,7 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
 
         uint256 endPrice = _loanOffer.amount + ((_loanOffer.amount * lendingPools[_loanOffer.nftContractAddress].rate) / 1 ether);
 
-        setDutchAuction(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.amount*3, endPrice, block.timestamp + lendingPools[_loanOffer.nftContractAddress].duration);
+        setDutchAuction(_loanOffer.nftContractAddress, token.tokenId, endPrice*3, endPrice, block.timestamp + lendingPools[_loanOffer.nftContractAddress].duration);
 
         return IAssetManager.LendingPaymentInfo({
             lender: lender,
@@ -644,7 +640,6 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
         } else {
             return _totalBid + ((_totalBid * _interest * elapsedDay) / (1 ether * totalDays));
         }
-
     }
 
     /**
@@ -661,15 +656,6 @@ contract SalvorLending is Initializable, ERC721HolderUpgradeable, EIP712Upgradea
     */
     modifier onlySigner(address _signer) {
         require(msg.sender == _signer, "Only signer");
-        _;
-    }
-
-    /**
-    * @notice Checks that a given order has not been cancelled or already redeemed.
-    * @param _orderKeyHash The hash key of the order.
-    */
-    modifier isNotCancelled(bytes32 _orderKeyHash) {
-        require(!fills[_orderKeyHash], "order has already redeemed or cancelled");
         _;
     }
 

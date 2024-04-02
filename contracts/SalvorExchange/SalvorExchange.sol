@@ -50,8 +50,6 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
         _disableInitializers();
     }
 
-    receive() external payable {}
-
     function initialize() public initializer {
         __EIP712_init_unchained(SIGNING_DOMAIN, SIGNATURE_VERSION);
         __Ownable_init_unchained();
@@ -104,6 +102,14 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
         if (version2timestamp == 0) {
             version2timestamp = block.timestamp;
         }
+    }
+
+    function getRemainingAmount(LibOrder.Offer memory offer) external view returns (uint256) {
+        bytes32 offerKeyHash = LibOrder.hashOfferKey(offer);
+        if (offer.startedAt > version2timestamp && version2timestamp > 0) {
+            offerKeyHash = LibOrder.hashOffer(offer);
+        }
+        return offer.size - sizes[offerKeyHash];
     }
 
     /**
@@ -208,7 +214,6 @@ contract SalvorExchange is Initializable, EIP712Upgradeable, OwnableUpgradeable,
         if (offer.startedAt > version2timestamp && version2timestamp > 0) {
             offerKeyHash = LibOrder.hashOffer(offer);
         }
-        require(!offerFills[offerKeyHash], "offer cancelled");
         require(offer.size > sizes[offerKeyHash], "size is filled");
         require(_hashTypedDataV4(LibOrder.hashToken(token)).recover(tokenSignature) == validator, "token signature is not valid");
         require(offer.nftContractAddress == token.nftContractAddress, "contract address does not match");

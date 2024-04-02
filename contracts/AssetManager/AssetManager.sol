@@ -339,7 +339,7 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
 
         emit TransferFrom(bidder, lender, transferredAmount);
 
-        biddingWallets[bidder] -= transferredAmount;
+        biddingWallets[bidder] -= bid;
         biddingWallets[lender] += transferredAmount;
     }
 

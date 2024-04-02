@@ -13,6 +13,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 import "../AssetManager/IAssetManager.sol";
 import "./lib/LibLendingERC20.sol";
@@ -155,7 +156,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         uint256 collateralizedAmount = (token.amount * 1 ether) / _loanOffer.price;
 
         emit Borrow(msg.sender, _loanOffer.collateralizedAsset, _loanOffer.lender, _loanOffer.salt, collateralizedAmount, token.amount);
-        IERC20Upgradeable(_loanOffer.collateralizedAsset).transferFrom(msg.sender, address(this), collateralizedAmount);
+        SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(_loanOffer.collateralizedAsset), msg.sender, address(this), collateralizedAmount);
         IAssetManager(assetManager).payERC20Lending(_loanOffer.lender, msg.sender, token.amount);
 
         loan.rate = _loanOffer.rate;
@@ -180,7 +181,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
 
         emit Repay(msg.sender, _collateralizedAsset, _lender, _salt, payment);
         IAssetManager(assetManager).transferFrom(msg.sender, _lender, payment);
-        IERC20Upgradeable(_collateralizedAsset).transfer(msg.sender, loan.collateralizedAmount);
+        SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(_collateralizedAsset), msg.sender, loan.collateralizedAmount);
         delete loans[msg.sender][_collateralizedAsset][_lender][_salt];
     }
 
@@ -190,7 +191,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     * @param _lender The address of the lender.
     * @param _salt A unique identifier for the loan, used to differentiate between loans with the same borrower, lender, and collateral.
     */
-    function repayETH(address _collateralizedAsset, address _lender, string memory _salt) nonReentrant external payable {
+    function repayETH(address _collateralizedAsset, address _lender, string memory _salt) external payable {
         IAssetManager(assetManager).deposit{ value: msg.value }(msg.sender);
         repay(_collateralizedAsset, _lender, _salt);
     }
@@ -208,7 +209,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         require(block.timestamp > (loan.duration + loan.startedAt), "loan period is not finished");
 
         emit ClearDebt(_borrower, _collateralizedAsset, msg.sender, _salt, loan.collateralizedAmount);
-        IERC20Upgradeable(_collateralizedAsset).transfer(msg.sender, loan.collateralizedAmount);
+        SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(_collateralizedAsset), msg.sender, loan.collateralizedAmount);
 
         delete loans[_borrower][_collateralizedAsset][msg.sender][_salt];
     }
