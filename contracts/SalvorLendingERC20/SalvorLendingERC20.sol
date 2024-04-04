@@ -54,10 +54,13 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     // Mapping to track which ERC20 token addresses are allowed as collateral for loans.
     mapping(address => bool) public allowedAssets;
 
+    mapping(bytes32 => bool) public fills;
+
     // events
     event Borrow(address indexed borrower, address indexed collateralizedAsset, address indexed lender, string salt, uint256 collateralizedAmount, uint256 lentAmount);
     event Repay(address indexed borrower, address indexed collateralizedAsset, address indexed lender, string salt, uint256 repaidAmount);
     event ClearDebt(address indexed borrower, address indexed collateralizedAsset, address indexed lender, string salt, uint256 amount);
+    event Cancel(address indexed collateralizedAsset, address indexed lender, string salt);
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -214,6 +217,20 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         delete loans[_borrower][_collateralizedAsset][msg.sender][_salt];
     }
 
+    function cancelOffer(LibLendingERC20.LoanOffer memory loanOffer, bytes memory signature) whenNotPaused nonReentrant external {
+        require(loanOffer.startedAt > 0, "non existent offer");
+        address lender = _validate(loanOffer, signature);
+        require(msg.sender == lender, "msg.sender is not authorized");
+        require(loanOffer.lender == lender, "lender does not match");
+
+        bytes32 hash = LibLendingERC20.hash(loanOffer);
+
+        require(!fills[hash], "order has been already cancelled");
+        fills[hash] = true;
+
+        emit Cancel(loanOffer.collateralizedAsset, loanOffer.lender, loanOffer.salt);
+    }
+
     /**
     * @notice Validates a loan offer and the associated token details provided by the borrower.
     * @dev This function checks various conditions such as the allowed assets, loan and token amounts, loan duration, and signatures.
@@ -237,6 +254,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         require(_token.blockNumber + blockRange > block.number, "token signature has been expired");
         sizes[hash] += _token.amount;
         require(_loanOffer.amount >= sizes[hash], "size is filled");
+        require(!fills[hash], "offer has been cancelled");
     }
 
     /**
