@@ -56,11 +56,14 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
 
     mapping(bytes32 => bool) public fills;
 
+    mapping(address => mapping(address => uint256)) public cancelOfferTimestamps;
+
     // events
     event Borrow(address indexed borrower, address indexed collateralizedAsset, address indexed lender, string salt, uint256 collateralizedAmount, uint256 lentAmount);
     event Repay(address indexed borrower, address indexed collateralizedAsset, address indexed lender, string salt, uint256 repaidAmount);
     event ClearDebt(address indexed borrower, address indexed collateralizedAsset, address indexed lender, string salt, uint256 amount);
     event Cancel(address indexed collateralizedAsset, address indexed lender, string salt);
+    event CancelOffer(address indexed user);
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -139,6 +142,11 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         return _hashTypedDataV4(hash).recover(signature);
     }
 
+    function cancelAllOffers() external whenNotPaused {
+        cancelOfferTimestamps[msg.sender][address(0x0)] = block.timestamp;
+        emit CancelOffer(msg.sender);
+    }
+
     /**
     * @notice Allows a borrower to take out a loan by providing a valid loan offer, the corresponding signatures, and the token details.
     * @param _loanOffer The loan offer struct containing the loan terms.
@@ -147,9 +155,9 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     * @param tokenSignature The signature of the borrower verifying the token details.
     */
     function borrow(LibLendingERC20.LoanOffer memory _loanOffer, bytes memory signature, LibLendingERC20.Token memory token, bytes memory tokenSignature)
-        nonReentrant
-        whenNotPaused
-        external
+    nonReentrant
+    whenNotPaused
+    external
     {
         Loan storage loan = loans[msg.sender][_loanOffer.collateralizedAsset][_loanOffer.lender][_loanOffer.salt];
         require(loan.startedAt == 0, "has been already borrowed");
@@ -252,6 +260,8 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
         require(msg.sender == _token.borrower, "token and borrower does not match");
         require(_hashTypedDataV4(LibLendingERC20.hashToken(_token)).recover(_tokenSignature) == validator, "token signature is not valid");
         require(_token.blockNumber + blockRange > block.number, "token signature has been expired");
+        require(cancelOfferTimestamps[lender][address(0x0)] < _loanOffer.startedAt, "offer is cancelled");
+
         sizes[hash] += _token.amount;
         require(_loanOffer.amount >= sizes[hash], "size is filled");
         require(!fills[hash], "offer has been cancelled");
@@ -262,7 +272,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     * @param _loanOffer The loan offer struct containing the loan terms.
     * @return The hash of the loan offer.
     */
-    function hashOrder(LibLendingERC20.LoanOffer memory _loanOffer) external pure returns(bytes32) {
+    function hashOffer(LibLendingERC20.LoanOffer memory _loanOffer) external pure returns(bytes32) {
         return LibLendingERC20.hash(_loanOffer);
     }
 

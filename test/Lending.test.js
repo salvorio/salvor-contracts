@@ -5,7 +5,7 @@ const LendingSigner = require("../libs/LendingSigner")
 describe("Lending", function () {
 	before(async function () {
 		// ABIs
-		this.lendingCF = await ethers.getContractFactory("SalvorLending")
+		this.lendingCF = await ethers.getContractFactory("SalvorLendingV2")
 		this.nftCollectibleCF = await ethers.getContractFactory("NFTCollectible")
 		this.assetManagerCF = await ethers.getContractFactory("AssetManager")
 		this.salvorGovernanceTokenCF = await ethers.getContractFactory("SalvorGovernanceToken")
@@ -106,7 +106,7 @@ describe("Lending", function () {
 
 	it("it should be borrowed", async function () {
 		const lendingSigner = new LendingSigner({ contract: this.lending, signer: this.lender })
-		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
+		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))
 
 		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[4] })
 		let tokenResult = await lendingSigner2.signToken(1, voucher.salt + '1', voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
@@ -154,7 +154,7 @@ describe("Lending", function () {
 		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 
-		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
+		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))
 		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 
 		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
@@ -183,7 +183,7 @@ describe("Lending", function () {
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 		await this.assetManager.connect(this.borrower)['deposit()']({ value: ethers.utils.parseEther("0.4") })
 
-		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
+		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))
 		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 
 		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
@@ -201,10 +201,10 @@ describe("Lending", function () {
 		const lendingSigner = new LendingSigner({ contract: this.lending, signer: this.lender })
 
 		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[4] })
-		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
+		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))
 
 		const lendingSigner3 = new LendingSigner({ contract: this.lending, signer: this.signers[5] })
-		const { voucher: voucher1, signature: signature1 } = await lendingSigner3.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
+		const { voucher: voucher1, signature: signature1 } = await lendingSigner3.createOfferVoucher(this.signers[5].address, this.nftCollectible.address, ethers.utils.parseEther("1"))
 
 
 		await this.lending.setBlockRange(40)
@@ -238,7 +238,7 @@ describe("Lending", function () {
 		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 
-		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.nftCollectible.address, ethers.utils.parseEther("1"))
+		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))
 		let tokenResult = await lendingSigner2.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
 
 		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])

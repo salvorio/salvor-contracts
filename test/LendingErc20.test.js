@@ -96,7 +96,7 @@ describe("Lending Erc20", function () {
 		const lendingSigner = new LendingSigner({ contract: this.lending, signer: this.lender })
 		let { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.salvorGovernanceToken.address, ethers.utils.parseEther("0"), ethers.utils.parseEther("0.1"), ethers.utils.parseEther("0.01"))
 
-		let hash = await this.lending.hashOrder(Object.values(voucher))
+		let hash = await this.lending.hashOffer(Object.values(voucher))
 		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[6] })
 		let tokenResult = await lendingSigner2.signToken(voucher, ethers.utils.parseEther("0.1"), this.borrower.address, hash)
 		await this.lending.pause()
@@ -113,18 +113,18 @@ describe("Lending Erc20", function () {
 		await expect(this.lending.connect(this.signers[3]).borrow(voucher1, signature1, tokenResult.voucher, tokenResult.signature)).to.be.revertedWith("insufficient amount requested")
 		let invalidVoucher = JSON.parse(JSON.stringify(voucher1))
 		invalidVoucher.salt = 'asdasdasd-12123'
-		hash = await this.lending.hashOrder(Object.values(voucher1))
+		hash = await this.lending.hashOffer(Object.values(voucher1))
 
 		tokenResult = await lendingSigner2.signToken(voucher, ethers.utils.parseEther("1"), this.borrower.address, hash)
 		await expect(this.lending.connect(this.signers[3]).borrow(invalidVoucher, signature, tokenResult.voucher, tokenResult.signature)).to.be.revertedWith("hash does not match")
 		await expect(this.lending.connect(this.lender).borrow(voucher1, signature1, tokenResult.voucher, tokenResult.signature)).to.be.revertedWith("signer cannot borrow from own loan offer")
 
 		let { voucher: voucher2, signature: signature2 } = await lendingSigner.createOfferVoucher(this.signers[6].address, this.salvorGovernanceToken.address, ethers.utils.parseEther("1"), ethers.utils.parseEther("0.1"), ethers.utils.parseEther("0.01"))
-		hash = await this.lending.hashOrder(Object.values(voucher2))
+		hash = await this.lending.hashOffer(Object.values(voucher2))
 		tokenResult = await lendingSigner2.signToken(voucher2, ethers.utils.parseEther("1"), this.borrower.address, hash)
 		await expect(this.lending.connect(this.signers[3]).borrow(voucher2, signature2, tokenResult.voucher, tokenResult.signature)).to.be.revertedWith("lender does not match")
 
-		hash = await this.lending.hashOrder(Object.values(voucher1))
+		hash = await this.lending.hashOffer(Object.values(voucher1))
 		tokenResult = await lendingSigner2.signToken(voucher, ethers.utils.parseEther("1"), this.borrower.address, hash)
 		await expect(this.lending.connect(this.signers[5]).borrow(voucher1, signature1, tokenResult.voucher, tokenResult.signature)).to.be.revertedWith("token and borrower does not match")
 
@@ -157,7 +157,7 @@ describe("Lending Erc20", function () {
 	it("it should be cleared", async function () {
 		const lendingSigner = new LendingSigner({ contract: this.lending, signer: this.lender })
 		let { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.salvorGovernanceToken.address, ethers.utils.parseEther("1"), ethers.utils.parseEther("0.1"), ethers.utils.parseEther("0.01"))
-		let hash = await this.lending.hashOrder(Object.values(voucher))
+		let hash = await this.lending.hashOffer(Object.values(voucher))
 		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[6] })
 
 		await this.lending.setBlockRange(40)
@@ -189,7 +189,7 @@ describe("Lending Erc20", function () {
 	it("it should be repaid", async function () {
 		const lendingSigner = new LendingSigner({ contract: this.lending, signer: this.lender })
 		let { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.salvorGovernanceToken.address, ethers.utils.parseEther("1"), ethers.utils.parseEther("0.1"), ethers.utils.parseEther("0.01"))
-		let hash = await this.lending.hashOrder(Object.values(voucher))
+		let hash = await this.lending.hashOffer(Object.values(voucher))
 		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[6] })
 
 		await this.lending.setBlockRange(40)

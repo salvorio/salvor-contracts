@@ -1,28 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.16;
 
-library LibLending {
+library LibLendingV2 {
 
-    bytes constant orderTypeString = abi.encodePacked(
+    bytes constant offerTypeString = abi.encodePacked(
         "LoanOffer(",
         "address nftContractAddress,",
+        "address lender,",
         "string salt,",
         "string traits,",
         "uint256 duration,",
         "uint256 amount,",
-        "uint256 size",
+        "uint256 size,",
+        "uint256 startedAt",
         ")"
     );
 
-    bytes32 constant ORDER_TYPEHASH = keccak256(orderTypeString);
+    bytes32 constant OFFER_TYPEHASH = keccak256(offerTypeString);
 
     bytes constant tokenTypeString = abi.encodePacked(
         "Token(",
         "uint256 tokenId,",
         "string salt,",
         "string traits,",
-        "uint256 blockNumber,"
-        "address borrower,"
+        "uint256 blockNumber,",
+        "address owner,",
         "address nftContractAddress,",
         "address lender",
         ")"
@@ -32,11 +34,13 @@ library LibLending {
 
     struct LoanOffer {
         address nftContractAddress;
+        address lender;
         string salt;
         string traits;
         uint duration;
         uint amount;
         uint size;
+        uint startedAt;
     }
 
     struct Token {
@@ -44,25 +48,23 @@ library LibLending {
         string salt;
         string traits;
         uint blockNumber;
-        address borrower;
+        address owner;
         address nftContractAddress;
         address lender;
     }
 
-    function hash(LoanOffer memory loan) internal pure returns (bytes32) {
+    function hash(LoanOffer memory loanOffer) internal pure returns (bytes32) {
         return keccak256(abi.encode(
-                ORDER_TYPEHASH,
-                loan.nftContractAddress,
-                keccak256(bytes(loan.salt)),
-                keccak256(bytes(loan.traits)),
-                loan.duration,
-                loan.amount,
-                loan.size
-            ));
-    }
-
-    function hashKey(LoanOffer memory _loan) internal pure returns (bytes32) {
-        return keccak256(abi.encode(_loan.nftContractAddress, _loan.salt));
+            OFFER_TYPEHASH,
+            loanOffer.nftContractAddress,
+            loanOffer.lender,
+            keccak256(bytes(loanOffer.salt)),
+            keccak256(bytes(loanOffer.traits)),
+            loanOffer.duration,
+            loanOffer.amount,
+            loanOffer.size,
+            loanOffer.startedAt
+        ));
     }
 
     function hashToken(Token memory token) internal pure returns (bytes32) {
@@ -72,7 +74,7 @@ library LibLending {
             keccak256(bytes(token.salt)),
             keccak256(bytes(token.traits)),
             token.blockNumber,
-            token.borrower,
+            token.owner,
             token.nftContractAddress,
             token.lender
         ));

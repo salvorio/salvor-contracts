@@ -49,16 +49,16 @@ library LibLendingERC20 {
 
     function hash(LoanOffer memory loan) internal pure returns (bytes32) {
         return keccak256(abi.encode(
-                ORDER_TYPEHASH,
-                loan.lender,
-                loan.collateralizedAsset,
-                keccak256(bytes(loan.salt)),
-                loan.amount,
-                loan.price,
-                loan.startedAt,
-                loan.duration,
-                loan.rate
-            ));
+            ORDER_TYPEHASH,
+            loan.lender,
+            loan.collateralizedAsset,
+            keccak256(bytes(loan.salt)),
+            loan.amount,
+            loan.price,
+            loan.startedAt,
+            loan.duration,
+            loan.rate
+        ));
     }
 
     function hashToken(Token memory token) internal pure returns (bytes32) {

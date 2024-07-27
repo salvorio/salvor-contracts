@@ -3,7 +3,7 @@ const { ethers } = require("hardhat")
 const { v4: uuidv4 } = require('uuid')
 // These constants must match the ones used in the smart contract.
 const SIGNING_DOMAIN_NAME = "Salvor"
-const SIGNING_DOMAIN_VERSION = "2"
+const SIGNING_DOMAIN_VERSION = "3"
 
 class ExchangeSigner {
 	constructor({ contract, signer }) {
@@ -11,9 +11,10 @@ class ExchangeSigner {
 		this.signer = signer
 	}
 
-	async createVoucher(nftContractAddress, tokenId, price = 0) {
+	async createVoucher(seller, nftContractAddress, tokenId, price = 0) {
 		const voucher = {
 			salt: uuidv4(),
+			seller,
 			orders: [{
 				nftContractAddress,
 				salt: uuidv4(),
@@ -28,6 +29,7 @@ class ExchangeSigner {
 		const types = {
 			BatchOrder: [
 				{ name: "salt", type: "string" },
+				{ name: "seller", type: "address" },
 				{ name: "orders", type: "Order[]" }
 			],
 			Order: [
@@ -47,9 +49,10 @@ class ExchangeSigner {
 		}
 	}
 
-	async createOfferVoucher(nftContractAddress, tokenId, bid = 0) {
+	async createOfferVoucher(buyer, nftContractAddress, tokenId, bid = 0) {
 		const voucher = {
 			nftContractAddress,
+			buyer,
 			salt: uuidv4(),
 			traits: 'allItems',
 			tokenId,
@@ -64,6 +67,7 @@ class ExchangeSigner {
 		const types = {
 			Offer: [
 				{ name: "nftContractAddress", type: "address" },
+				{ name: "buyer", type: "address" },
 				{ name: "salt", type: "string" },
 				{ name: "traits", type: "string" },
 				{ name: "tokenId", type: "uint256" },
@@ -82,19 +86,19 @@ class ExchangeSigner {
 		}
 	}
 
-	async signToken(tokenId, salt, traits, sender, offerOwner, nftContractAddress) {
+	async signToken(tokenId, salt, traits, sender, nftContractAddress) {
 		const latestBlockNumber = await ethers.provider.getBlockNumber()
-		const voucher = { tokenId, salt, traits, blockNumber: latestBlockNumber, sender, offerOwner, nftContractAddress }
+		const voucher = { tokenId, blockNumber: latestBlockNumber, sender, nftContractAddress, uuid: uuidv4(), salt, traits}
 		const domain = await this._signingDomain()
 		const types = {
 			Token: [
 				{ name: "tokenId", type: "uint256" },
-				{ name: "salt", type: "string" },
-				{ name: "traits", type: "string" },
 				{ name: "blockNumber", type: "uint256" },
 				{ name: "sender", type: "address" },
-				{ name: "offerOwner", type: "address" },
-				{ name: "nftContractAddress", type: "address" }
+				{ name: "nftContractAddress", type: "address" },
+				{ name: "uuid", type: "string" },
+				{ name: "salt", type: "string" },
+				{ name: "traits", type: "string" },
 			]
 		}
 

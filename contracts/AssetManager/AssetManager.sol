@@ -75,8 +75,6 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
         __ReentrancyGuard_init_unchained();
     }
 
-    receive() external payable {}
-
     /**
     * @dev pause contract, restricting certain operations
      */
@@ -340,6 +338,119 @@ contract AssetManager is Initializable, OwnableUpgradeable, PausableUpgradeable,
         emit TransferFrom(bidder, lender, transferredAmount);
 
         biddingWallets[bidder] -= bid;
+        biddingWallets[lender] += transferredAmount;
+    }
+
+
+    /**
+* @notice Allows batch payment for lending transactions.
+   * @param payments An array of LendingPaymentInfo structs containing payment details.
+   */
+    function payLendingBatchV2(IAssetManager.LendingPaymentInfoV2[] memory payments) external whenNotPaused {
+        require(_isPlatformWhitelisted(msg.sender), "not allowed");
+        uint96 _commissionPercentage = protocolFees[msg.sender];
+
+        uint256 len = payments.length;
+        uint64 i;
+        for (; i < len; ++i) {
+            require(biddingWallets[payments[i].lender] >= payments[i].amount, "Insufficient balance");
+            uint256 fee =  _getPortionOfBid(payments[i].amount, _commissionPercentage);
+
+            pendingFee += fee;
+
+            biddingWallets[payments[i].lender] -= payments[i].amount;
+            biddingWallets[payments[i].borrower] += (payments[i].amount - fee);
+
+            emit TransferFrom(payments[i].lender, payments[i].borrower, (payments[i].amount - fee));
+            if (payments[i].repaymentAmount > 0) {
+                require(biddingWallets[payments[i].borrower] >= payments[i].repaymentAmount, "Insufficient balance");
+                uint256 repaymentAmount = payments[i].repaymentAmount;
+                biddingWallets[payments[i].borrower] -= repaymentAmount;
+                if (payments[i].delegatedAmount > 0) {
+                    repaymentAmount -= payments[i].delegatedAmount;
+                    pendingFee += payments[i].delegatedAmount;
+                }
+                biddingWallets[payments[i].previousLender] += repaymentAmount;
+                emit TransferFrom(payments[i].borrower, payments[i].previousLender, repaymentAmount);
+            }
+
+            if (payments[i].collection != address(0x0)) {
+                IERC721Upgradeable(payments[i].collection).safeTransferFrom(payments[i].borrower, msg.sender, payments[i].tokenId);
+            }
+        }
+    }
+
+    function payLendingDelegatedBatch(IAssetManager.LendingPaymentInfoV2[] memory payments) external whenNotPaused {
+        require(_isPlatformWhitelisted(msg.sender), "not allowed");
+        uint96 _commissionPercentage = protocolFees[msg.sender] * 2;
+
+        uint256 len = payments.length;
+        uint64 i;
+        for (; i < len; ++i) {
+            require(biddingWallets[payments[i].lender] >= payments[i].amount, "Insufficient balance");
+            uint256 fee =  _getPortionOfBid(payments[i].amount, _commissionPercentage);
+
+            pendingFee += fee;
+
+            biddingWallets[payments[i].lender] -= payments[i].amount;
+            biddingWallets[payments[i].previousLender] += (payments[i].amount - fee);
+
+            emit TransferFrom(payments[i].lender, payments[i].previousLender, (payments[i].amount - fee));
+        }
+    }
+
+    /**
+    * @notice Allows batch repayment for lending transactions.
+   * @param payments An array of LendingPaymentInfo structs containing repayment details.
+   */
+    function lendingRepayBatchV2(IAssetManager.LendingPaymentInfoV2[] memory payments) external whenNotPaused {
+        require(_isPlatformWhitelisted(msg.sender), "not allowed");
+        uint256 len = payments.length;
+        uint64 i;
+        for (; i < len; ++i) {
+            uint256 paymentAmount = payments[i].amount;
+            require(biddingWallets[payments[i].borrower] >= paymentAmount, "Insufficient balance");
+            emit TransferFrom(payments[i].borrower, payments[i].lender, paymentAmount);
+            biddingWallets[payments[i].borrower] -= paymentAmount;
+
+            if (payments[i].delegatedAmount > 0) {
+                paymentAmount -= payments[i].delegatedAmount;
+                pendingFee += payments[i].delegatedAmount;
+            }
+            biddingWallets[payments[i].lender] += paymentAmount;
+            IERC721Upgradeable(payments[i].collection).safeTransferFrom(msg.sender, payments[i].borrower, payments[i].tokenId);
+        }
+    }
+
+    /**
+ * @notice Processes the payment for a Dutch auction.
+   * @param _nftContractAddress The address of the NFT contract.
+   * @param _tokenId The token ID of the NFT being auctioned.
+   * @param bidder The address of the bidder.
+   * @param lender The address of the lender.
+   * @param bid The amount of the bid.
+   * @param endPrice The final price of the auction.
+   */
+    function dutchPayV2(address _nftContractAddress, uint256 _tokenId, address bidder, address lender, uint256 bid, uint256 endPrice, uint256 delegatedAmount) external whenNotPaused nonReentrant {
+        require(_isPlatformWhitelisted(msg.sender), "not allowed");
+        require(biddingWallets[bidder] >= bid, "Insufficient balance");
+
+        IERC721Upgradeable(_nftContractAddress).safeTransferFrom(msg.sender, bidder, _tokenId);
+
+
+        uint256 fee = _getPortionOfBid(bid - endPrice, 5000);
+
+        pendingFee += fee;
+
+        uint256 transferredAmount = bid - fee;
+
+        emit TransferFrom(bidder, lender, transferredAmount);
+
+        biddingWallets[bidder] -= bid;
+        if (delegatedAmount > 0) {
+            transferredAmount -= delegatedAmount;
+            pendingFee += delegatedAmount;
+        }
         biddingWallets[lender] += transferredAmount;
     }
 
