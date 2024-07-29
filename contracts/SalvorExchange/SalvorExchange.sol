@@ -127,11 +127,13 @@ contract SalvorExchangeV2 is Initializable, EIP712Upgradeable, OwnableUpgradeabl
         IAssetManager(assetManager).payMPBatch(payments);
     }
 
+    /// @notice Cancels all offers made by the sender.
     function cancelAllOffers() external whenNotPaused {
         cancelOfferTimestamps[msg.sender][address(0x0)] = block.timestamp;
         emit CancelOffer(msg.sender);
     }
 
+    /// @notice Cancels all orders made by the sender.
     function cancelAllOrders() external whenNotPaused {
         cancelOrderTimestamps[msg.sender][address(0x0)] = block.timestamp;
         emit CancelAllOrders(msg.sender);

@@ -52,7 +52,7 @@ npx hardhat compile
 
 In order to properly organize the contracts, the **AssetManager** contract must be deployed first.
 Once deployed, the obtained **AssetManager** address needs to be set in the exchange and lending contracts using their respective `setAssetManager` function.
-Additionally, the deployed **SalvorExchange** and **SalvorLending** contracts' addresses must be whitelisted on the AssetManager contract using the `addPlatform` function.
+Additionally, the deployed **SalvorExchange** , **SalvorLending** and **SalvorLendingERC20** contracts' addresses must be whitelisted on the AssetManager contract using the `addPlatform` function.
 
 ``deploy.js`` configured to handle above explanation.
 

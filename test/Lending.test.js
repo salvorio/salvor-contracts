@@ -116,7 +116,7 @@ describe("Lending", function () {
 
 		await expect(this.lending.connect(this.signers[3]).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("pool is not active")
 
-		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
+		await this.lending.setPool(this.nftCollectible.address, 604800, '18493807888372071', true)
 
 		await expect(this.lending.connect(this.signers[3]).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])).to.be.revertedWith("salt does not match")
 
@@ -151,7 +151,7 @@ describe("Lending", function () {
 
 		await this.lending.setBlockRange(40)
 		await this.nftCollectible.setApprovalForAll(this.assetManager.address, true);
-		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
+		await this.lending.setPool(this.nftCollectible.address, 604800, '18493807888372071', true)
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 
 		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))
@@ -179,7 +179,7 @@ describe("Lending", function () {
 
 		await this.lending.setBlockRange(40)
 		await this.nftCollectible.setApprovalForAll(this.assetManager.address, true);
-		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
+		await this.lending.setPool(this.nftCollectible.address, 604800, '18493807888372071', true)
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 		await this.assetManager.connect(this.borrower)['deposit()']({ value: ethers.utils.parseEther("0.4") })
 
@@ -209,7 +209,7 @@ describe("Lending", function () {
 
 		await this.lending.setBlockRange(40)
 		await this.nftCollectible.setApprovalForAll(this.assetManager.address, true);
-		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
+		await this.lending.setPool(this.nftCollectible.address, 604800, '18493807888372071', true)
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 		await this.assetManager.connect(this.borrower)['deposit()']({ value: ethers.utils.parseEther("0.4") })
 		await this.assetManager.connect(this.signers[5])['deposit()']({ value: ethers.utils.parseEther("1.1") })
@@ -235,7 +235,7 @@ describe("Lending", function () {
 		await this.nftCollectible.setApprovalForAll(this.assetManager.address, true);
 		await this.lending.setAuctionDuration(86400); // a day
 		await this.lending.setDropInterval(1800); // 30 min
-		await this.lending.setPool(this.nftCollectible.address, 0, 604800, '18493807888372071', true)
+		await this.lending.setPool(this.nftCollectible.address, 604800, '18493807888372071', true)
 		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("1") })
 
 		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))

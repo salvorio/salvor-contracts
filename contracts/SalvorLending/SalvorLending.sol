@@ -27,7 +27,6 @@ contract SalvorLendingV2 is Initializable, ERC721HolderUpgradeable, EIP712Upgrad
     struct LendingPool {
         uint256 duration;   // Duration of the loan in the pool in terms of a time unit (e.g., seconds, blocks)
         uint256 rate;       // Interest rate for the loan in the pool, represented as a percentage
-        uint96 protocolFee; // Legacy field: Originally intended to represent the fee percentage collected by the protocol. Currently not in use, retained for backward compatibility and contract integrity.
         bool isActive;      // Status of the pool, indicating whether it is active (true) or not (false)
     }
 
@@ -90,12 +89,20 @@ contract SalvorLendingV2 is Initializable, ERC721HolderUpgradeable, EIP712Upgrad
     // Mapping of token addresses to token IDs to their respective Dutch auction details.
     mapping(address => mapping(uint256 => DutchAuction)) public dutchAuctions;
 
+    /**
+     * @notice Tracks the amounts that have been delegated from one loan offer to another.
+     * @dev The first key is the address of the collection, the second key is the collection tokenId, and the value is the delegated amount.
+     */
     mapping(address => mapping(uint256 => uint256)) public delegatedAmounts;
 
+    /**
+     * @notice Tracks the timestamps of cancelled offers.
+     * @dev The first key is the address of the buyer, the second key is the specific asset address or a zero address (0x0) to denote a general offer cancellation, and the value is the timestamp when the offer was cancelled.
+     */
     mapping(address => mapping(address => uint256)) public cancelOfferTimestamps;
 
     // events
-    event SetPool(address indexed collection, uint96 protocolFee, uint256 duration, uint256 rate, bool isActive);
+    event SetPool(address indexed collection, uint256 duration, uint256 rate, bool isActive);
     event Extend(address indexed collection, uint256 indexed tokenId, string salt, uint256 amount, uint256 repaidAmount);
     event Delegate(address indexed collection, uint256 indexed tokenId, string salt, uint256 delegatedAmount, uint256 receivedAmount);
     event Borrow(address indexed collection, uint256 indexed tokenId, string salt, uint256 amount);
@@ -192,22 +199,28 @@ contract SalvorLendingV2 is Initializable, ERC721HolderUpgradeable, EIP712Upgrad
     /**
     * @notice Configures or updates a lending pool for a specified collection. This function is accessible to the contract owner or the admin.
     * @param _collection The address of the NFT collection for which the lending pool is being set.
-    * @param _protocolFee Fee associated with the protocol, expressed in basis points.
     * @param _duration The duration for which the pool will be active.
     * @param _rate The interest rate for the lending pool.
     * @param _isActive Boolean indicating whether the pool is active or not.
     */
-    function setPool(address _collection, uint96 _protocolFee, uint256 _duration, uint256 _rate, bool _isActive) external {
+    function setPool(address _collection, uint256 _duration, uint256 _rate, bool _isActive) external {
         require(msg.sender == owner() || msg.sender == admin, "not authorized");
         require(_duration > 0 && _duration % 86400 == 0, "day unit must be entered");
         lendingPools[_collection].duration = _duration;
-        lendingPools[_collection].protocolFee = _protocolFee;
         lendingPools[_collection].rate = _rate;
         lendingPools[_collection].isActive = _isActive;
         IERC721Upgradeable(_collection).setApprovalForAll(assetManager, true);
-        emit SetPool(_collection, _protocolFee, _duration, _rate, _isActive);
+        emit SetPool(_collection, _duration, _rate, _isActive);
     }
 
+
+    /**
+     * @notice Delegates existing lending transactions to new loan offers in a single transaction.
+     * @param _loanOffers An array of loan offers to be processed.
+     * @param _signatures An array of signatures corresponding to the loan offers.
+     * @param _tokens An array of tokens associated with the loan offers.
+     * @param _tokenSignatures An array of signatures for the tokens.
+     */
     function batchDelegate(
         LibLendingV2.LoanOffer[] calldata _loanOffers,
         bytes[] calldata _signatures,
