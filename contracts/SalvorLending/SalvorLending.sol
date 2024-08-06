@@ -512,6 +512,7 @@ contract SalvorLendingV2 is Initializable, ERC721HolderUpgradeable, EIP712Upgrad
     returns (IAssetManager.LendingPaymentInfoV2 memory)
     {
         Loan memory item = items[_loanOffer.nftContractAddress][token.tokenId];
+        require(block.timestamp - item.startedAt > 3600, "Operation not allowed: The item must be active for at least 1 hour.");
         require(item.borrower == msg.sender, "there is no collateralized item belongs to msg.sender");
         if (dutchAuctions[_loanOffer.nftContractAddress][token.tokenId].startTime > 0) {
             require(block.timestamp < dutchAuctions[_loanOffer.nftContractAddress][token.tokenId].startTime, "Auction has already started. Cannot proceed with the operation");
