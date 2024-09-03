@@ -571,7 +571,7 @@ contract SalvorLendingV2 is Initializable, ERC721HolderUpgradeable, EIP712Upgrad
             payment = remainingAmount;
         } else {
             payment = _loanOffer.amount;
-            delegatedAmounts[_loanOffer.nftContractAddress][token.tokenId] += (items[_loanOffer.nftContractAddress][token.tokenId].amount - _loanOffer.amount);
+            delegatedAmounts[_loanOffer.nftContractAddress][token.tokenId] += (remainingAmount - _loanOffer.amount);
         }
 
         emit Delegate(_loanOffer.nftContractAddress, token.tokenId, _loanOffer.salt, delegatedAmounts[_loanOffer.nftContractAddress][token.tokenId], payment);

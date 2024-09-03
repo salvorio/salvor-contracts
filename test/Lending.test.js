@@ -220,6 +220,9 @@ describe("Lending", function () {
 		const receipt3 = await tx3.wait()
 		expect(receipt3.events.filter(event => event.event === "Borrow").length).to.be.equal(1)
 
+		await network.provider.send("evm_increaseTime", [3601])
+		await network.provider.send("evm_mine")
+
 		let tokenResult2 = await lendingSigner2.signToken(1, voucher1.salt, voucher1.traits, this.borrower.address, this.nftCollectible.address, this.signers[5].address)
 		const tx4 = await this.lending.connect(this.borrower).batchExtend([voucher1], [signature1], [tokenResult2.voucher], [tokenResult2.signature])
 		const receipt4 = await tx4.wait()
@@ -254,5 +257,49 @@ describe("Lending", function () {
 		const tx4 = await this.lending.connect(this.lender).makeBidForDutchAuctionETH(this.nftCollectible.address, "1", { value: ethers.utils.parseEther("5") })
 		const receipt4 = await tx4.wait()
 		expect(receipt4.events.filter(event => event.event === "DutchAuctionMadeBid").length).to.be.equal(1)
+	})
+
+	it("delegate", async function () {
+		const lendingSigner = new LendingSigner({ contract: this.lending, signer: this.lender })
+		const lendingSigner2 = new LendingSigner({ contract: this.lending, signer: this.signers[6] })
+		const validatorSigner = new LendingSigner({ contract: this.lending, signer: this.signers[4] })
+
+		await this.lending.setBlockRange(40)
+		await this.nftCollectible.setApprovalForAll(this.assetManager.address, true);
+		await this.lending.setPool(this.nftCollectible.address, 604800, '18493807888372071', true)
+		await this.assetManager.connect(this.lender)['deposit()']({ value: ethers.utils.parseEther("5") })
+		await this.assetManager.connect(this.signers[6])['deposit()']({ value: ethers.utils.parseEther("3") })
+
+
+		const { voucher, signature } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("5"))
+		let tokenResult = await validatorSigner.signToken(1, voucher.salt, voucher.traits, this.borrower.address, this.nftCollectible.address, this.lender.address)
+
+		const tx3 = await this.lending.connect(this.borrower).batchBorrow([voucher], [signature], [tokenResult.voucher], [tokenResult.signature])
+		const receipt3 = await tx3.wait()
+		expect(receipt3.events.filter(event => event.event === "Borrow").length).to.be.equal(1)
+
+		await network.provider.send("evm_increaseTime", [1])
+		await network.provider.send("evm_mine")
+
+		const { voucher: voucher1, signature: signature1 } = await lendingSigner2.createOfferVoucher(this.signers[6].address, this.nftCollectible.address, ethers.utils.parseEther("3"))
+		let tokenResult2 = await validatorSigner.signToken(1, voucher1.salt, voucher1.traits, this.lender.address, this.nftCollectible.address, this.signers[6].address)
+
+		const tx4 = await this.lending.connect(this.lender).batchDelegate([voucher1], [signature1], [tokenResult2.voucher], [tokenResult2.signature])
+		const receipt4 = await tx4.wait()
+		expect(receipt4.events.filter(event => event.event === "Delegate").length).to.be.equal(1)
+
+		const { voucher: voucher2, signature: signature2 } = await lendingSigner.createOfferVoucher(this.lender.address, this.nftCollectible.address, ethers.utils.parseEther("1"))
+		let tokenResult3 = await validatorSigner.signToken(1, voucher2.salt, voucher2.traits, this.signers[6].address, this.nftCollectible.address, this.lender.address)
+
+		const tx5 = await this.lending.connect(this.signers[6]).batchDelegate([voucher2], [signature2], [tokenResult3.voucher], [tokenResult3.signature])
+		const receipt5 = await tx5.wait()
+		expect(receipt5.events.filter(event => event.event === "Delegate").length).to.be.equal(1)
+
+		const { voucher: voucher3, signature: signature3 } = await lendingSigner2.createOfferVoucher(this.signers[6].address, this.nftCollectible.address, ethers.utils.parseEther("1"))
+		let tokenResult4 = await validatorSigner.signToken(1, voucher3.salt, voucher3.traits, this.lender.address, this.nftCollectible.address, this.signers[6].address)
+
+		const tx6 = await this.lending.connect(this.lender).batchDelegate([voucher3], [signature3], [tokenResult4.voucher], [tokenResult4.signature])
+		const receipt6 = await tx6.wait()
+		expect(receipt6.events.filter(event => event.event === "Delegate").length).to.be.equal(1)
 	})
 })

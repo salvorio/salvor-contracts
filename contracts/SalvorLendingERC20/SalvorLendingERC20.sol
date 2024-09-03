@@ -161,6 +161,7 @@ contract SalvorLendingERC20 is Initializable, EIP712Upgradeable, OwnableUpgradea
     {
         Loan storage loan = loans[msg.sender][_loanOffer.collateralizedAsset][_loanOffer.lender][_loanOffer.salt];
         require(loan.startedAt == 0, "has been already borrowed");
+        require(_loanOffer.price < (token.amount * 1 ether), "Loan offer price must be less than the token amount in wei.");
 
         validateLoanOffer(_loanOffer, signature, token, tokenSignature);
 
