@@ -310,7 +310,7 @@ contract Marketplace is Initializable, EIP712Upgradeable, OwnableUpgradeable, Pa
     * @param shareholders revenue share list
     */
     function acceptOffer(address _nftContractAddress, uint256 _tokenId, address _buyer, LibShareholder.Shareholder[] memory shareholders) external whenNotPaused nonReentrant {
-        require(msg.sender != _buyer, "could not accept own offer");
+        require(msg.sender != _buyer, "cannot accept your own offer");
 
         address existingNftOwner = IERC721Upgradeable(_nftContractAddress).ownerOf(_tokenId);
         require(existingNftOwner == msg.sender, "you haven't this nft");
