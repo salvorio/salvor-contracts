@@ -44,7 +44,7 @@ contract SalvorExchangeV2 is Initializable, EIP712Upgradeable, OwnableUpgradeabl
     event CancelOrder(address indexed collection, uint256 indexed tokenId, string salt);
     event Redeem(address indexed collection, uint256 indexed tokenId, string salt, uint256 value);
     event CancelOffer(address indexed user);
-    event CancelAllOrders(address indexed user);
+    event CancelAllOrders(address indexed user, address indexed collection);
     event AcceptOffer(address indexed collection, uint256 indexed tokenId, address indexed buyer, string salt, uint256 bid);
     event SetAssetManager(address indexed assetManager);
     event SetValidator(address indexed validator);
@@ -134,9 +134,9 @@ contract SalvorExchangeV2 is Initializable, EIP712Upgradeable, OwnableUpgradeabl
     }
 
     /// @notice Cancels all orders made by the sender.
-    function cancelAllOrders() external whenNotPaused {
-        cancelOrderTimestamps[msg.sender][address(0x0)] = block.timestamp;
-        emit CancelAllOrders(msg.sender);
+    function cancelAllOrders(address nftContractAddress) external whenNotPaused {
+        cancelOrderTimestamps[msg.sender][nftContractAddress] = block.timestamp;
+        emit CancelAllOrders(msg.sender, nftContractAddress);
     }
 
     /**
@@ -265,6 +265,7 @@ contract SalvorExchangeV2 is Initializable, EIP712Upgradeable, OwnableUpgradeabl
         require(order.price > 0, "non existent order");
         require((block.timestamp - order.startedAt) < order.duration, "order has expired");
         require(cancelOrderTimestamps[seller][address(0x0)] < order.startedAt, "order is cancelled");
+        require(cancelOrderTimestamps[seller][order.nftContractAddress] < order.startedAt, "order is cancelled");
 
         bytes32 orderKeyHash = LibOrderV2._hashOrderItem(order);
 
